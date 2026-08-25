@@ -113,6 +113,7 @@ def parse_curl(command: str, *, source: str = "curl") -> Request:
         raise DarcoError("empty curl command")
 
     method = "GET"
+    explicit_method = False
     headers: list[NameValue] = []
     cookies: list[Cookie] = []
     data_items: list[str] = []
@@ -126,9 +127,10 @@ def parse_curl(command: str, *, source: str = "curl") -> Request:
     head_mode = False
 
     def apply_value_flag(flag: str, arg: str) -> None:
-        nonlocal method, timeout, verify, follow_redirects, get_mode, head_mode
+        nonlocal method, explicit_method, timeout, verify, follow_redirects, get_mode, head_mode
         if flag in ("-X", "--request"):
             method = arg.upper()
+            explicit_method = True
         elif flag in ("-H", "--header"):
             headers.append(_parse_header(arg))
         elif flag in ("-d", "--data", "--data-raw", "--data-binary"):
@@ -219,6 +221,8 @@ def parse_curl(command: str, *, source: str = "curl") -> Request:
         url = "http://" + url
     if head_mode:
         method = "HEAD"
+    elif not explicit_method and not get_mode and (data_items or form_items):
+        method = "POST"
 
     params: list[NameValue] = []
     split = urlsplit(url)

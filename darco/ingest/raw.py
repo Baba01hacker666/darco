@@ -11,9 +11,10 @@ from ..models import BodyType, Cookie, NameValue, Request
 def parse_raw_http(text: str, *, scheme: str | None = None, source: str = "raw") -> Request:
     """Parse a raw HTTP request (Burp 'copy as http request' style) into a Request."""
     text = text.replace("\r\n", "\n")
-    if "\n\n" not in text:
-        raise DarcoError("raw request missing blank line between headers and body")
-    head, _, body = text.partition("\n\n")
+    if "\n\n" in text:
+        head, _, body = text.partition("\n\n")
+    else:
+        head, body = text, ""
     lines = [ln for ln in head.split("\n") if ln.strip() != ""]
     if not lines:
         raise DarcoError("empty raw request")
@@ -40,14 +41,15 @@ def parse_raw_http(text: str, *, scheme: str | None = None, source: str = "raw")
         url = f"{scheme}://{host}{target}"
 
     cookies: list[Cookie] = []
-    cookie_header = next((h.value for h in headers if h.name.lower() == "cookie"), None)
-    if cookie_header:
+    cookie_headers = [h.value for h in headers if h.name.lower() == "cookie"]
+    if cookie_headers:
         headers = [h for h in headers if h.name.lower() != "cookie"]
-        for part in cookie_header.split(";"):
-            part = part.strip()
-            if part:
-                cname, _, cvalue = part.partition("=")
-                cookies.append(Cookie(name=cname.strip(), value=cvalue.strip()))
+        for cookie_header in cookie_headers:
+            for part in cookie_header.split(";"):
+                part = part.strip()
+                if part:
+                    cname, _, cvalue = part.partition("=")
+                    cookies.append(Cookie(name=cname.strip(), value=cvalue.strip()))
 
     params: list[NameValue] = []
     split = urlsplit(url)

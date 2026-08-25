@@ -36,6 +36,23 @@ def test_set_unset_flip_param():
     assert not any(p.name == "user" for p in req3.body_form)
 
 
+def test_flip_and_set_form_only_param():
+    # Param only exists in body_form, not in params
+    req = Request(
+        method="POST",
+        url="http://t.test/x",
+        body_type=BodyType.FORM,
+        body_form=[NameValue(name="is_admin", value="false"), NameValue(name="role", value="user")],
+    )
+    req2, _ = apply_mutations(req, [Mutation("flip_param", name="is_admin")])
+    assert next(p.value for p in req2.body_form if p.name == "is_admin") == "true"
+    assert len(req2.params) == 0
+
+    req3, _ = apply_mutations(req, [Mutation("set_param", name="role", value="admin")])
+    assert next(p.value for p in req3.body_form if p.name == "role") == "admin"
+    assert len(req3.params) == 0
+
+
 def test_flip_value_variants():
     assert flip_value("TRUE") == "FALSE"
     assert flip_value("1") == "0"

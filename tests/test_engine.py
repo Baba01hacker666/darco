@@ -79,6 +79,20 @@ def test_headers_preserved_and_form_body(app, workspace):
     assert '"body": "a=1"' in body
 
 
+def test_multi_value_form_body_preserved(app, workspace):
+    session = workspace.load_session()
+    req = Request(
+        method="POST",
+        url=f"{app}/echo",
+        body_type=BodyType.FORM,
+        body_form=[NameValue(name="tag", value="sec"), NameValue(name="tag", value="dev")],
+        follow_redirects=False,
+    )
+    rec, _ = send_and_record(workspace, req, session)
+    body = rec.response.body
+    assert "tag=sec&tag=dev" in body
+
+
 def test_query_params_rebuilt(app, workspace):
     session = workspace.load_session()
     req = Request(method="GET", url=f"{app}/debug", params=[NameValue(name="enabled", value="true")])

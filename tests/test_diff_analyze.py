@@ -76,6 +76,12 @@ def test_analyze_response_rate_limit():
     assert any(f.type == "rate_limited" for f in analyze_response(req, resp))
 
 
+def test_analyze_response_rate_limit_body_non_429():
+    req = Request(method="POST", url="http://t.test/otp")
+    resp = _resp(200, "Slow down! You are being rate limited. Try again later.")
+    assert any(f.type == "rate_limited" for f in analyze_response(req, resp))
+
+
 def test_analyze_response_captcha():
     req = Request(method="GET", url="http://t.test/captcha")
     resp = _resp(200, '<script src="https://www.google.com/recaptcha/api.js"></script>')

@@ -99,7 +99,10 @@ def execute(
     if request.body_type == BodyType.JSON:
         json_body = request.body_json if request.body_json is not None else {}
     elif request.body_type == BodyType.FORM:
-        data = {h.name: h.value for h in request.body_form}
+        form_data: dict[str, list[str]] = {}
+        for h in request.body_form:
+            form_data.setdefault(h.name, []).append(h.value)
+        data = {k: v if len(v) > 1 else v[0] for k, v in form_data.items()}
     elif request.body_type == BodyType.RAW:
         content = request.body_raw.encode(request.body_encoding)
 

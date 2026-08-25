@@ -159,13 +159,16 @@ def apply_mutations(request: Request, ops: list[Mutation]) -> tuple[Request, lis
             descriptions.append(op.describe())
         elif op.op == "set_param":
             found = find_param(op.name)
+            form = find_form(op.name)
             if found:
                 found.value = op.value
-            else:
-                req.params.append(NameValue(name=op.name, value=op.value))
-            form = find_form(op.name)
             if form:
                 form.value = op.value
+            if not found and not form:
+                if req.body_type == BodyType.FORM:
+                    req.body_form.append(NameValue(name=op.name, value=op.value))
+                else:
+                    req.params.append(NameValue(name=op.name, value=op.value))
             descriptions.append(op.describe())
         elif op.op == "unset_param":
             req.params = [p for p in req.params if p.name.lower() != op.name.lower()]
@@ -173,11 +176,12 @@ def apply_mutations(request: Request, ops: list[Mutation]) -> tuple[Request, lis
             descriptions.append(op.describe())
         elif op.op == "flip_param":
             p = find_param(op.name)
-            if p is None:
-                raise DarcoError(f"cannot flip param {op.name!r}: not present in request")
-            p.value = flip_value(p.value)
             form = find_form(op.name)
-            if form:
+            if p is None and form is None:
+                raise DarcoError(f"cannot flip param {op.name!r}: not present in request")
+            if p is not None:
+                p.value = flip_value(p.value)
+            if form is not None:
                 form.value = flip_value(form.value)
             descriptions.append(op.describe())
         elif op.op == "strip_session":

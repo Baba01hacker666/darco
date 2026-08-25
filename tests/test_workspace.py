@@ -26,6 +26,15 @@ def test_duplicate_create_raises(tmp_path):
         Workspace.create("http://t.test", tmp_path / "w.darco")
 
 
+def test_non_empty_dir_create_raises(tmp_path):
+    non_empty = tmp_path / "existing_dir"
+    non_empty.mkdir()
+    (non_empty / "my_code.py").write_text("print('hello')")
+    with pytest.raises(DarcoError, match="not empty"):
+        Workspace.create("http://t.test", non_empty)
+    assert (non_empty / "my_code.py").exists()  # file preserved, not wiped
+
+
 def test_add_and_get_record(tmp_path):
     ws = Workspace.create("http://t.test", tmp_path / "w.darco")
     req = Request(method="GET", url="http://t.test/")

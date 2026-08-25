@@ -43,3 +43,15 @@ def test_discover_builds_sitemap(app, workspace):
 
     assert workspace.sitemap_file.exists()
     assert workspace.load_findings()
+
+
+def test_extract_js_endpoints_xhr():
+    from darco.discovery.js_extractor import extract_js_endpoints
+
+    js_code = """
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/v2/submit", true);
+    xhr.send();
+    """
+    endpoints = extract_js_endpoints(js_code, "http://target.test")
+    assert "http://target.test/api/v2/submit" in endpoints

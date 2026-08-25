@@ -93,6 +93,33 @@ def test_raw_relative_url_and_body():
     assert {p.name for p in req.body_form} == {"user", "pass"}
 
 
+def test_curl_implicit_post_method():
+    req = parse_curl("curl http://h/login -d username=u")
+    assert req.method == "POST"
+    assert req.body_type == BodyType.FORM
+
+    req_json = parse_curl('curl http://h/api --data-json \'{"k": 1}\'')
+    assert req_json.method == "POST"
+
+    req_form = parse_curl("curl http://h/upload -F file=data")
+    assert req_form.method == "POST"
+
+
+def test_raw_no_trailing_newline():
+    text = "GET /status HTTP/1.1\r\nHost: example.com"
+    req = parse_raw_http(text)
+    assert req.method == "GET"
+    assert req.url == "http://example.com/status"
+
+
+def test_raw_multiple_cookie_headers():
+    text = "GET / HTTP/1.1\r\nHost: t.test\r\nCookie: sid=1\r\nCookie: theme=dark\r\n\r\n"
+    req = parse_raw_http(text)
+    cookie_dict = {c.name: c.value for c in req.cookies}
+    assert cookie_dict == {"sid": "1", "theme": "dark"}
+    assert not any(h.name.lower() == "cookie" for h in req.headers)
+
+
 def test_raw_cookie_header_moved():
     text = "GET / HTTP/1.1\r\nHost: t.test\r\nCookie: sid=1; a=b\r\n\r\n"
     req = parse_raw_http(text)

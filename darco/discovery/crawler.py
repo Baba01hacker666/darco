@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 from ..analyze import analyze_response
 from ..models import (
+    Cookie,
     Endpoint,
     Finding,
     JsFile,
@@ -288,6 +289,7 @@ def _record_endpoint(normalized: str, endpoint_by_url: dict[str, Endpoint], *, s
 
 
 def _response_from_httpx(resp: httpx.Response) -> Response:
+    set_cookies = [Cookie(name=c.name, value=c.value, domain=c.domain, path=c.path) for c in resp.cookies.jar]
     return Response(
         status_code=resp.status_code,
         reason=resp.reason_phrase or "",
@@ -297,6 +299,7 @@ def _response_from_httpx(resp: httpx.Response) -> Response:
         url=str(resp.url),
         elapsed_ms=round(resp.elapsed.total_seconds() * 1000),
         redirects=[str(r.url) for r in resp.history],
+        set_cookies=set_cookies,
     )
 
 

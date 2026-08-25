@@ -97,6 +97,22 @@ def test_fuzz_build_variants_flip_boolean():
     assert "strip-session" in labels
 
 
+def test_fuzz_build_variants_form_body_boolean():
+    from darco.fuzz import build_variants
+    from darco.models import Request, NameValue, BodyType
+
+    req = Request(
+        method="POST",
+        url="http://t/login",
+        body_type=BodyType.FORM,
+        body_form=[NameValue(name="is_admin", value="false"), NameValue(name="user_id", value="100")],
+    )
+    variants = build_variants(req)
+    labels = [l for l, _, _ in variants]
+    assert "flip:is_admin" in labels
+    assert any(l.startswith("type-confuse:user_id=") for l in labels)
+
+
 def test_fuzz_run_detects_status_change(app, tmp_path):
     from darco.fuzz import build_variants, run_fuzz, _classify
     from darco.models import Request, NameValue, Response, SessionState

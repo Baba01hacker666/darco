@@ -122,7 +122,7 @@ def analyze_response(request: Request, response: Response) -> list[Finding]:
                 "medium",
             )
         )
-    elif RATE_PATTERN.search(body) and response.status_code == 429:
+    elif RATE_PATTERN.search(body):
         findings.append(
             _finding(
                 "rate_limited",

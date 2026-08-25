@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 JS_PATTERNS = [
     re.compile(r"""(?:fetch|axios\.(?:get|post|put|delete|patch|head))\s*\(\s*['"]([^'")\s]+)['"]"""),
     re.compile(r"""new\s+WebSocket\s*\(\s*['"]([^'")\s]+)['"]"""),
-    re.compile(r"""XMLHttpRequest"""),
+    re.compile(r"""\.open\s*\(\s*['"][A-Za-z]+['"]\s*,\s*['"]([^'")\s]+)['"]"""),
     re.compile(r"""url\s*[:=]\s*['"]([^'")\s]+)['"]"""),
     re.compile(r"""['"](/(?:api|v\d|admin|internal|ws|graphql|rest)[^'"\s]*|\w+\.(?:php|asp|aspx|jsp|json))['"]"""),
 ]

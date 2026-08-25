@@ -62,8 +62,9 @@ class Workspace:
         if path.exists():
             if (path / "workspace.json").exists():
                 raise DarcoError(f"workspace already exists: {path}")
-            shutil.rmtree(path)
-        path.mkdir(parents=True)
+            if any(path.iterdir()):
+                raise DarcoError(f"directory already exists and is not empty: {path}")
+        path.mkdir(parents=True, exist_ok=True)
         ws = cls(path)
         cfg = WorkspaceConfig(
             target=target,
@@ -78,7 +79,7 @@ class Workspace:
         ws.history_file.touch()
         ws.findings_file.write_text(json.dumps([]))
         ws.sitemap_file.write_text(json.dumps({}))
-        ws.bodies_dir.mkdir()
+        ws.bodies_dir.mkdir(exist_ok=True)
         return ws
 
     @classmethod
@@ -87,7 +88,20 @@ class Workspace:
         if not (path / "workspace.json").exists():
             raise DarcoError(f"not a darco workspace: {path}")
         ws = cls(path)
-        ws._count = sum(1 for _ in ws.history_file.open() if _.strip())
+        max_id = 0
+        if ws.history_file.exists():
+            with ws.history_file.open() as fh:
+                for line in fh:
+                    if line.strip():
+                        try:
+                            rec_id = json.loads(line).get("id", "")
+                            if str(rec_id).isdigit():
+                                max_id = max(max_id, int(rec_id))
+                            else:
+                                max_id += 1
+                        except Exception:
+                            max_id += 1
+        ws._count = max_id
         return ws
 
     # ------------------------------------------------------------------ config/session
@@ -131,19 +145,26 @@ class Workspace:
                 )
         with self.history_file.open("a") as fh:
             fh.write(json.dumps(rec) + "\n")
-        self._count = max(self._count, int(record.id))
+        try:
+            self._count = max(self._count, int(record.id))
+        except (ValueError, TypeError):
+            pass
 
     def get_record(self, record_id: str) -> HistoryRecord:
-        for line in self.history_file.open():
-            data = json.loads(line)
-            if data.get("id") == record_id:
-                return HistoryRecord.model_validate(data)
+        with self.history_file.open() as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                data = json.loads(line)
+                if data.get("id") == record_id:
+                    return HistoryRecord.model_validate(data)
         raise DarcoError(f"no history record with id {record_id!r}")
 
     def iter_records(self):
-        for line in self.history_file.open():
-            if line.strip():
-                yield HistoryRecord.model_validate(json.loads(line))
+        with self.history_file.open() as fh:
+            for line in fh:
+                if line.strip():
+                    yield HistoryRecord.model_validate(json.loads(line))
 
     def list_records(self) -> list[HistoryRecord]:
         return list(self.iter_records())
