@@ -102,15 +102,18 @@ darco fuzz          # reads ./darco.toml
 | --- | --- |
 | `darco <url>` / `darco -u <url>` | Direct request execution (curl / httpie style) |
 | `darco <id>` / `darco send [id\|url]` | Send or replay a request (with mutations like `--strip-session`, `--flip-param`) |
+| `darco detect [url\|id]` | Detect WAF shields and web technologies (servers, frameworks, CMS, frontend) |
+| `darco waf [url\|id]` | Inspect active WAF / CDN shields protecting the target |
+| `darco tech [url\|id]` | Fingerprint web servers, languages, frameworks, CMS, and frontend libraries |
 | `darco fuzz [url\|id]` | Smart-default fuzz: flip booleans, type-confuse numerics, boundary IDs, SQL/XSS; report anomalies |
-| `darco discover [url]` | Crawl & parse: endpoints, forms, JS refs, robots, signals |
+| `darco discover [url]` | Crawl & parse: endpoints, forms, JS refs, robots, technologies, WAFs, signals |
 | `darco init <target>` | Create a workspace (`<host>.darco/`) |
 | `darco ingest curl "<curl ...>"` | Parse a curl command into history |
 | `darco ingest raw <file>` | Parse a raw HTTP request (Burp style) |
 | `darco ingest har <file>` | Import requests from a HAR file |
 | `darco repeat <id> --count N` | Replay a stored request N times (rate-limit / OTP loops) |
 | `darco diff <idA> <idB>` | Structured response diff (status/headers/body/JSON) |
-| `darco analyze <id> [--save]` | Signals: reflections, error leaks, rate limits, CAPTCHA, auth cookies; `--save` persists to `findings.json` |
+| `darco analyze <id> [--save]` | Signals: reflections, error leaks, rate limits, CAPTCHA, auth cookies, WAF & tech detections; `--save` persists to `findings.json` |
 | `darco findings list\|clear` | Inspect or wipe the workspace's accumulated findings |
 | `darco proxy --port 8080` | Record-only forward proxy; flows land in history |
 | `darco status` / `darco session list\|clear` | Inspect or reset session state |

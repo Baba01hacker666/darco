@@ -9,6 +9,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ..analyze import analyze_response
+from ..detection import detect_technologies, detect_waf
 from ..models import (
     Cookie,
     Endpoint,
@@ -19,6 +20,8 @@ from ..models import (
     Request,
     Response,
     SiteMap,
+    TechDetection,
+    WafDetection,
 )
 from ..workspace import Workspace
 from .js_extractor import extract_js_endpoints
@@ -99,6 +102,8 @@ async def discover(
     forms: list[Form] = []
     js_files: dict[str, JsFile] = {}
     signals: list[Finding] = []
+    tech_by_name: dict[str, TechDetection] = {}
+    waf_by_name: dict[str, WafDetection] = {}
     errors = 0
     max_urls_reached = False
 
@@ -157,6 +162,8 @@ async def discover(
                             forms,
                             js_files,
                             signals,
+                            tech_by_name,
+                            waf_by_name,
                             parse_js,
                             timeout,
                             verify,
@@ -183,6 +190,8 @@ async def discover(
     sitemap.forms = forms
     sitemap.js_files = sorted(js_files.values(), key=lambda j: j.url)
     sitemap.signals = signals
+    sitemap.technologies = sorted(tech_by_name.values(), key=lambda t: (t.category, t.name))
+    sitemap.wafs = list(waf_by_name.values())
     sitemap.stats = {
         "visited": len(visited),
         "errors": errors,
@@ -190,6 +199,8 @@ async def discover(
         "forms": len(forms),
         "js_files": len(js_files),
         "signals": len(signals),
+        "technologies": len(sitemap.technologies),
+        "wafs": len(sitemap.wafs),
         "max_urls_reached": int(max_urls_reached),
     }
     workspace.save_sitemap(sitemap)
@@ -239,6 +250,8 @@ async def _process(
     forms: list[Form],
     js_files: dict[str, JsFile],
     signals: list[Finding],
+    tech_by_name: dict[str, TechDetection],
+    waf_by_name: dict[str, WafDetection],
     parse_js: bool,
     timeout: float,
     verify: bool,
@@ -323,8 +336,16 @@ async def _process(
                 if child not in visited:
                     await queue.put((child, d + 1))
 
+    darco_resp = _response_from_httpx(resp)
+    for tech in detect_technologies(darco_resp, Request(method="GET", url=url)):
+        if tech.name not in tech_by_name or (not tech_by_name[tech.name].version and tech.version):
+            tech_by_name[tech.name] = tech
+    for waf in detect_waf(darco_resp, Request(method="GET", url=url)):
+        if waf.name not in waf_by_name:
+            waf_by_name[waf.name] = waf
+
     for f in analyze_response(
-        Request(method="GET", url=url, source="crawl"), _response_from_httpx(resp)
+        Request(method="GET", url=url, source="crawl"), darco_resp
     ):
         signals.append(_finding(f.type, url, f.evidence, f.suggestion, f.severity))
     path = urlsplit(url).path

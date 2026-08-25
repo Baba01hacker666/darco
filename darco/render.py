@@ -104,6 +104,26 @@ def md_send(d: dict) -> str:
                 "- **response headers**: "
                 + ", ".join(f"`{h['name']}: {h['value']}`" for h in notable)
             )
+        if d.get("wafs"):
+            waf_list = d["wafs"]
+            waf_strs = []
+            for w in waf_list:
+                w_name = w.get("name") if isinstance(w, dict) else getattr(w, "name", "")
+                w_blk = " (BLOCKED)" if (w.get("blocked") if isinstance(w, dict) else getattr(w, "blocked", False)) else ""
+                waf_strs.append(f"`{w_name}{w_blk}`")
+            lines.append("- **WAF / Shield**: " + ", ".join(waf_strs))
+
+        if d.get("technologies"):
+            tech_list = d["technologies"]
+            tech_strs = []
+            for t in tech_list:
+                t_name = t.get("name") if isinstance(t, dict) else getattr(t, "name", "")
+                t_ver = t.get("version") if isinstance(t, dict) else getattr(t, "version", None)
+                t_cat = t.get("category") if isinstance(t, dict) else getattr(t, "category", "")
+                v_str = f" {t_ver}" if t_ver else ""
+                tech_strs.append(f"`{t_name}{v_str}` ({t_cat})")
+            lines.append("- **Technologies**: " + ", ".join(tech_strs))
+
         body = resp.get("body", "")
         if body:
             body_lines = body.splitlines()
@@ -314,4 +334,50 @@ def md_fuzz(d: dict) -> str:
             lines.append(f"  - status: `{status}`")
         lines.append(f"  - what happened: {detail}")
         lines.append(f"  - did: {muts}")
+    return "\n".join(lines)
+
+
+def md_detect(d: dict) -> str:
+    target = d.get("target") or d.get("url") or ""
+    lines = [f"# Detection report: `{target}`" if target else "# Detection report", ""]
+    wafs = d.get("wafs") or []
+    if wafs:
+        lines.append(f"## WAF & Shields ({len(wafs)})")
+        lines.append("")
+        for w in wafs:
+            name = w.get("name") if isinstance(w, dict) else getattr(w, "name", "")
+            vendor = w.get("vendor") if isinstance(w, dict) else getattr(w, "vendor", "")
+            conf = w.get("confidence") if isinstance(w, dict) else getattr(w, "confidence", "high")
+            evid = w.get("evidence") if isinstance(w, dict) else getattr(w, "evidence", "")
+            blocked = w.get("blocked") if isinstance(w, dict) else getattr(w, "blocked", False)
+            block_tag = " `[BLOCKED REQUEST]`" if blocked else ""
+            vendor_str = f" ({vendor})" if vendor else ""
+            lines.append(f"- **{name}**{vendor_str} — `{conf}` confidence{block_tag}")
+            if evid:
+                lines.append(f"  - Evidence: `{evid}`")
+        lines.append("")
+    else:
+        lines.append("## WAF & Shields")
+        lines.append("")
+        lines.append("_No active WAF / CDN shields identified._")
+        lines.append("")
+
+    techs = d.get("technologies") or []
+    if techs:
+        lines.append(f"## Technologies ({len(techs)})")
+        lines.append("")
+        lines.append("| Technology | Category | Version | Confidence | Evidence |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for t in techs:
+            name = t.get("name") if isinstance(t, dict) else getattr(t, "name", "")
+            cat = t.get("category") if isinstance(t, dict) else getattr(t, "category", "")
+            ver = (t.get("version") if isinstance(t, dict) else getattr(t, "version", None)) or "—"
+            conf = t.get("confidence") if isinstance(t, dict) else getattr(t, "confidence", "high")
+            evid = (t.get("evidence") if isinstance(t, dict) else getattr(t, "evidence", "")) or "—"
+            lines.append(f"| **{name}** | `{cat}` | {ver} | {conf} | `{evid}` |")
+    else:
+        lines.append("## Technologies")
+        lines.append("")
+        lines.append("_No specific technology signatures matched._")
+
     return "\n".join(lines)

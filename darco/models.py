@@ -158,6 +158,22 @@ class JsFile(DarcoModel):
     endpoints: list[str] = Field(default_factory=list)
 
 
+class TechDetection(DarcoModel):
+    name: str
+    category: str  # "server", "language", "framework", "cms", "frontend", "cdn"
+    version: str | None = None
+    confidence: str = "high"  # "high", "medium", "low"
+    evidence: str = ""
+
+
+class WafDetection(DarcoModel):
+    name: str
+    vendor: str = ""
+    confidence: str = "high"  # "high", "medium", "low"
+    evidence: str = ""
+    blocked: bool = False
+
+
 class SiteMap(DarcoModel):
     target: str = ""
     crawled_at: str = ""
@@ -167,6 +183,8 @@ class SiteMap(DarcoModel):
     js_files: list[JsFile] = Field(default_factory=list)
     signals: list[Finding] = Field(default_factory=list)
     robots: list[str] = Field(default_factory=list)
+    technologies: list[TechDetection] = Field(default_factory=list)
+    wafs: list[WafDetection] = Field(default_factory=list)
 
 
 def to_json(model: BaseModel) -> dict[str, Any]:

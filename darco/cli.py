@@ -528,16 +528,27 @@ def send_cmd(
                 baseline_response=response,
                 concurrency=cfg.fuzz.concurrency,
             )
+            from .detection import detect_technologies, detect_waf
+
+            wafs = [to_json(w) for w in detect_waf(response, req)]
+            techs = [to_json(t) for t in detect_technologies(response, req)]
             out = {
                 "id": None,
                 "oneshot": True,
                 "request": to_json(req),
                 "response": to_json(response),
                 "mutations": desc,
+                "wafs": wafs,
+                "technologies": techs,
                 "fuzz": fres,
             }
             _emit(ctx, out, md_send)
             return
+
+        from .detection import detect_technologies, detect_waf
+
+        wafs = [to_json(w) for w in detect_waf(response, req)]
+        techs = [to_json(t) for t in detect_technologies(response, req)]
         _emit(
             ctx,
             {
@@ -546,6 +557,8 @@ def send_cmd(
                 "request": to_json(req),
                 "response": to_json(response),
                 "mutations": desc,
+                "wafs": wafs,
+                "technologies": techs,
             },
             md_send,
         )
@@ -606,10 +619,25 @@ def send_cmd(
         _echo_json({"id": record.id, "error": record.error})
         sys.exit(1)
 
+    from .detection import detect_technologies, detect_waf
+
+    wafs = (
+        [to_json(w) for w in detect_waf(record.response, record.request)]
+        if record.response
+        else []
+    )
+    techs = (
+        [to_json(t) for t in detect_technologies(record.response, record.request)]
+        if record.response
+        else []
+    )
+
     output: dict = {
         "id": record.id,
         "request": to_json(record.request),
         "response": to_json(record.response),
+        "wafs": wafs,
+        "technologies": techs,
     }
     if diff_id:
         other = ws.get_record(diff_id)
@@ -893,6 +921,106 @@ def analyze_cmd(ctx, record_id, save):
         return
     _emit(
         ctx, {"id": record_id, "findings": [to_json(f) for f in findings]}, md_analyze
+    )
+
+
+# ------------------------------------------------------------------ detect (tech & WAF)
+@cli.command("detect")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target URL to fingerprint")
+@click.option("--from", "from_id", default=None, help="Stored record id to inspect")
+@click.option("--waf-only", is_flag=True, help="Only detect WAF / CDN shields")
+@click.option("--tech-only", is_flag=True, help="Only detect web technologies")
+@click.option("--insecure", is_flag=True, default=False, help="Disable TLS verification")
+@click.pass_context
+def detect_cmd(ctx, target, url, from_id, waf_only, tech_only, insecure):
+    """Detect WAF shields and web technologies from headers, cookies, and body."""
+    from .detection import detect_technologies, detect_waf
+    from .engine import send_request
+    from .render import md_detect
+
+    if target:
+        if target.isdigit() or (target.startswith("0") and len(target) == 4):
+            from_id = from_id or target
+        else:
+            url = url or target
+
+    req = None
+    resp = None
+
+    if from_id:
+        ws = _find_workspace(ctx)
+        record = ws.get_record(from_id)
+        req = record.request
+        resp = record.response
+        if not resp:
+            raise DarcoError(f"record {from_id!r} has no response to inspect")
+    else:
+        if not url:
+            cfg = (ctx.obj or {}).get("config")
+            if cfg and cfg.target:
+                url = cfg.target
+            else:
+                ws = _find_workspace(ctx, require=False)
+                if ws:
+                    try:
+                        url = ws.load_config().target
+                    except DarcoError:
+                        pass
+        if not url:
+            raise DarcoError("provide a target URL (-u <url>) or record ID (--from <id>)")
+        if not url.startswith(("http://", "https://")):
+            url = "http://" + url
+        req = Request(method="GET", url=url, verify=not insecure)
+        resp, _ = send_request(req, _one_shot_session())
+
+    wafs = [to_json(w) for w in detect_waf(resp, req)] if not tech_only else []
+    techs = [to_json(t) for t in detect_technologies(resp, req)] if not waf_only else []
+
+    out = {
+        "target": req.url,
+        "status_code": resp.status_code,
+        "wafs": wafs,
+        "technologies": techs,
+    }
+    _emit(ctx, out, md_detect)
+
+
+@cli.command("waf")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target URL to inspect for WAF")
+@click.option("--from", "from_id", default=None, help="Stored record id to inspect")
+@click.option("--insecure", is_flag=True, default=False, help="Disable TLS verification")
+@click.pass_context
+def waf_cmd(ctx, target, url, from_id, insecure):
+    """Detect WAF / CDN shields protecting the target."""
+    ctx.invoke(
+        detect_cmd,
+        target=target,
+        url=url,
+        from_id=from_id,
+        waf_only=True,
+        tech_only=False,
+        insecure=insecure,
+    )
+
+
+@cli.command("tech")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target URL to fingerprint technologies")
+@click.option("--from", "from_id", default=None, help="Stored record id to inspect")
+@click.option("--insecure", is_flag=True, default=False, help="Disable TLS verification")
+@click.pass_context
+def tech_cmd(ctx, target, url, from_id, insecure):
+    """Detect web servers, frameworks, CMS, and frontend libraries."""
+    ctx.invoke(
+        detect_cmd,
+        target=target,
+        url=url,
+        from_id=from_id,
+        waf_only=False,
+        tech_only=True,
+        insecure=insecure,
     )
 
 

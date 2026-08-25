@@ -246,4 +246,40 @@ def analyze_response(request: Request, response: Response) -> list[Finding]:
                     "medium",
                 )
             )
+
+    # WAF detection
+    from .detection.waf import detect_waf
+
+    for waf in detect_waf(response, request):
+        sev = "medium" if waf.blocked else "info"
+        sug = (
+            f"Active WAF/Shield detected ({waf.name}). Requests may be filtered or challenged; examine headers and payload anomalies."
+            if not waf.blocked
+            else f"Request was BLOCKED by {waf.name}. Adapt payloads or use alternate request methods/headers."
+        )
+        findings.append(
+            _finding(
+                "waf_detected",
+                loc,
+                f"{waf.name} ({waf.vendor}) [{waf.confidence} confidence] - {waf.evidence}",
+                sug,
+                sev,
+            )
+        )
+
+    # Technology detection
+    from .detection.tech import detect_technologies
+
+    for tech in detect_technologies(response, request):
+        ver_str = f" v{tech.version}" if tech.version else ""
+        findings.append(
+            _finding(
+                "tech_detected",
+                loc,
+                f"{tech.name}{ver_str} ({tech.category}) - {tech.evidence}",
+                f"Identify known CVEs and component-specific behavior for {tech.name}{ver_str}.",
+                "info",
+            )
+        )
+
     return findings
