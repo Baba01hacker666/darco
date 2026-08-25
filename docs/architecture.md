@@ -33,6 +33,13 @@ structured evidence (diffs, findings, site maps) back as JSON.
                     └──────┬───────┘   │
                            ▼           ▼
                     ┌──────────────────────────┐
+                    │ fuzz.py                  │
+                    │ smart variant engine     │
+                    │ (background anomaly scan)│
+                    └──────┬───────────────────┘
+                           ▼
+                           ▼
+                    ┌──────────────────────────┐
                     │ engine.py                │
                     │  httpx client + session  │──▶ target
                     │  capture (cookies/CSRF)  │
@@ -61,6 +68,9 @@ structured evidence (diffs, findings, site maps) back as JSON.
    state.
 4. **Record** (`darco/workspace.py`): append a `HistoryRecord` to
    `history.jsonl`; write oversized bodies to `bodies/`.
+5. **Fuzz** (`darco/fuzz.py`): `build_variants` turns a request into smart
+   mutations (flip booleans, type-confuse numerics, boundary IDs, SQL/XSS);
+   `run_fuzz` fires them concurrently and classifies anomalies vs baseline.
 5. **Analyze** (`darco/analyze.py`, `darco/diff.py`, `darco/discovery/`):
    derive findings, diffs, and site maps from recorded requests/responses.
 

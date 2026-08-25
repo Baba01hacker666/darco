@@ -24,12 +24,14 @@ UV_CACHE_DIR=/tmp/uv-cache uv pip install --python .venv/bin/python -e . pytest
 | New mutation op | `darco/mutate.py` (op handling + `describe()`) + CLI flag in `darco/cli.py` |
 | New finding heuristic | `darco/analyze.py` |
 | New crawl signal | `darco/discovery/crawler.py` or `darco/analyze.py` |
-| New CLI command | `darco/cli.py` (JSON to stdout, `DarcoError` on failure) |
+| New fuzz variant | `darco/fuzz.py` (`build_variants`) + `tests/test_fuzz.py` |
+| New CLI command | `darco/cli.py` (markdown to stdout by default, `--json` for the agent contract; `DarcoError` on failure) |
+| Persistent findings | `darco/analyze.py` (`analyze --save`) + `darco/cli.py` (`findings` group) + `workspace.add_findings` |
 | Proxy behavior | `darco/proxy.py` (keep `_serialize` hop-by-hop rules intact) |
 
 ## Contracts to preserve
 
-1. **stdout = JSON, stderr = logs.** Never `print()` diagnostics to stdout.
+1. **stdout = markdown by default, `--json`/`‑J` = agent contract; stderr = logs.** Never `print()` diagnostics to stdout.
 2. **`DarcoError` for expected failures.** The CLI wrapper in `main()`
    converts it to `error: ...` on stderr and exit `1`. Don't let tracebacks
    escape for expected conditions.
@@ -62,9 +64,9 @@ UV_CACHE_DIR=/tmp/uv-cache uv pip install --python .venv/bin/python -e . pytest
 
 ## Roadmap hooks
 
-- **v2 playbooks**: build on `mutate.py` — auto-suggest `Mutation` lists from
-  `analyze.py` findings (e.g. `rate_limited` → try `strip_session`).
-- **v3 fuzzer**: reuse `rebuild_url`/body construction and the diff engine to
-  detect response divergence per payload.
-- **v4 MCP server**: wrap the CLI commands as MCP tools; keep the JSON
+- **v2 fuzz engine (done)**: `darco/fuzz.py` builds smart variants (flip,
+  type-confuse numerics, boundary IDs, SQL/XSS) and fires them concurrently;
+  `_classify` surfaces status flips, body changes, error leaks, and new
+  auth-cookie issuance. `tests/test_fuzz.py` covers it.
+- **v3 MCP server**: wrap the CLI commands as MCP tools; keep the JSON
   contract as the wire format.

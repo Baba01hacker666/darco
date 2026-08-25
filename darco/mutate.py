@@ -56,6 +56,35 @@ def flip_value(value: str) -> str:
     return FLIP_MAP[key].capitalize()
 
 
+def mutations_from_dicts(items: list[dict]) -> list[Mutation]:
+    """Build a Mutation list from a list of op dicts (the --modify-file shape).
+
+    Each dict must carry an ``op`` key. Unknown ops raise ``DarcoError``. This is
+    the shared parser used by both ``--modify-file`` and the fuzz engine, so the
+    op vocabulary stays in one place.
+    """
+    ops: list[Mutation] = []
+    for item in items:
+        op = item.get("op")
+        if op == "set_header":
+            ops.append(Mutation("set_header", name=item.get("name", ""), value=item.get("value", "")))
+        elif op == "unset_header":
+            ops.append(Mutation("unset_header", name=item.get("name", "")))
+        elif op == "set_param":
+            ops.append(Mutation("set_param", name=item.get("name", ""), value=item.get("value", "")))
+        elif op == "unset_param":
+            ops.append(Mutation("unset_param", name=item.get("name", "")))
+        elif op == "flip_param":
+            ops.append(Mutation("flip_param", name=item.get("name", "")))
+        elif op == "strip_session":
+            ops.append(Mutation("strip_session"))
+        elif op == "set_body":
+            ops.append(Mutation("set_body", value=item.get("value", "")))
+        else:
+            raise DarcoError(f"unknown mutation op: {op!r}")
+    return ops
+
+
 def parse_mutation_ops(options: dict) -> list[Mutation]:
     """Translate CLI mutation flags into a Mutation list."""
     ops: list[Mutation] = []
@@ -95,26 +124,7 @@ def _parse_modify_file(path: str) -> list[Mutation]:
         raise DarcoError(f"invalid --modify-file: {exc}") from exc
     if not isinstance(items, list):
         raise DarcoError("--modify-file must contain a JSON list of ops")
-    ops: list[Mutation] = []
-    for item in items:
-        op = item.get("op")
-        if op == "set_header":
-            ops.append(Mutation("set_header", name=item.get("name", ""), value=item.get("value", "")))
-        elif op == "unset_header":
-            ops.append(Mutation("unset_header", name=item.get("name", "")))
-        elif op == "set_param":
-            ops.append(Mutation("set_param", name=item.get("name", ""), value=item.get("value", "")))
-        elif op == "unset_param":
-            ops.append(Mutation("unset_param", name=item.get("name", "")))
-        elif op == "flip_param":
-            ops.append(Mutation("flip_param", name=item.get("name", "")))
-        elif op == "strip_session":
-            ops.append(Mutation("strip_session"))
-        elif op == "set_body":
-            ops.append(Mutation("set_body", value=item.get("value", "")))
-        else:
-            raise DarcoError(f"unknown mutation op in --modify-file: {op!r}")
-    return ops
+    return mutations_from_dicts(items)
 
 
 def apply_mutations(request: Request, ops: list[Mutation]) -> tuple[Request, list[str]]:

@@ -16,6 +16,7 @@ you care about.
 | [diff-and-analysis.md](diff-and-analysis.md) | Response diffing and signal/finding heuristics |
 | [proxy.md](proxy.md) | The record-only forward proxy: HTTP + CONNECT tunneling |
 | [discovery.md](discovery.md) | The async crawler: BFS, seeds, parsing, endpoint inventory |
+| [fuzz.md](fuzz.md) | Smart fuzz engine: build_variants, background dispatch, anomaly classification |
 | [development.md](development.md) | Extending Darco: conventions, testing, adding features |
 
 ## Quick map
@@ -27,13 +28,16 @@ darco/
   workspace.py    Workspace storage: history.jsonl, session.json, bodies/
   engine.py       HTTP execution + session capture/replay
   mutate.py       request transforms (strip-session, flip-param, ...)
+  fuzz.py         smart variant engine: build_variants, run_fuzz, _classify
   diff.py         response diffing with volatile-token normalization
   analyze.py      signal heuristics -> Finding objects
+  configfile.py   darco.toml / darco.json discovery + load
   proxy.py        record-only asyncio forward proxy
   ingest/         curl / raw HTTP / HAR parsers -> Request
   discovery/      async crawler -> SiteMap
 tests/            fixture app + unit/integration tests
 ```
 
-All commands emit JSON to stdout; diagnostics go to stderr. Expected failures
-raise `DarcoError` and exit `1`.
+All commands emit Markdown to stdout by default; `--json` / `-J` emits the
+agent contract. Diagnostics go to stderr. Expected failures raise `DarcoError`
+and exit `1`.

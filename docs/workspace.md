@@ -53,6 +53,9 @@ target.test.darco/
 - `add_findings` deduplicates on `(type, location, evidence)` and returns how
   many new findings were added — so re-running `discover` never duplicates
   the signal store.
+- `darco analyze <id> --save` appends a single request's findings here; the
+  `discover` crawler appends its crawl signals here too. Inspect with
+  `darco findings list`, wipe with `darco findings clear`.
 
 ### Status
 `status()` summarizes the workspace for agents: path, target, history count,

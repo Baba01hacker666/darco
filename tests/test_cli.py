@@ -8,11 +8,13 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 
 
-def run(args, cwd):
+def run(args, cwd, json_only=True):
     import os
 
     env = dict(os.environ)
     env["PYTHONPATH"] = str(REPO)
+    if json_only:
+        args = ["--json", *args]
     return subprocess.run(
         [sys.executable, "-m", "darco", *args],
         cwd=cwd,

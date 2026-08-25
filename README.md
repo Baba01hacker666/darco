@@ -62,6 +62,22 @@ darco send --from 0001 --unset-param otp_code
 darco send --from 0001 --modify-file ops.json          # JSON list of mutation ops
 ```
 
+## New in v2 — smart fuzz engine, config files, on-the-fly mode
+
+```bash
+# One-shot: hit a URL directly, no workspace / init needed
+darco send -u https://app.test/admin
+darco fuzz -u https://app.test/user?id=5        # auto-mutate & report anomalies
+
+# Smart defaults: fuzz is automatic on --fuzz (flip booleans, type-confuse
+# numbers with words, boundary IDs, SQL/XSS probes) and fires in the background
+darco send -u https://app.test/user?id=5 --fuzz
+
+# Config file (darco.toml / darco.json) drives target, format, base headers,
+# and fuzz behavior — no flags needed every run
+darco fuzz          # reads ./darco.toml
+```
+
 ## Command reference
 
 | Command | Purpose |
@@ -70,9 +86,13 @@ darco send --from 0001 --modify-file ops.json          # JSON list of mutation o
 | `darco ingest curl "<curl ...>"` | Parse a curl command into history |
 | `darco ingest raw <file>` | Parse a raw HTTP request (Burp style) |
 | `darco ingest har <file>` | Import requests from a HAR file |
-| `darco send --from <id>` | Send a stored request (or `--curl`, `--raw-file`) |
+| `darco send --from <id>` | Send a stored request (or `--curl`, `--raw-file`, or `-u <url>` one-shot) |
+| `darco send <...> --fuzz` | Send, then auto-fuzz the request (smart variants) |
+| `darco fuzz -u <url>` | Smart-default fuzz: flip booleans, type-confuse numerics, boundary IDs, SQL/XSS; report anomalies |
+| `darco repeat <id> --count N` | Replay a stored request N times (rate-limit / OTP loops) |
 | `darco diff <idA> <idB>` | Structured response diff (status/headers/body/JSON) |
-| `darco analyze <id>` | Signals: reflections, error leaks, rate limits, CAPTCHA, auth cookies |
+| `darco analyze <id> [--save]` | Signals: reflections, error leaks, rate limits, CAPTCHA, auth cookies; `--save` persists to `findings.json` |
+| `darco findings list\|clear` | Inspect or wipe the workspace's accumulated findings |
 | `darco proxy --port 8080` | Record-only forward proxy; flows land in history |
 | `darco discover <url>` | Crawl & parse: endpoints, forms, JS refs, robots, signals |
 | `darco status` / `darco session list\|clear` | Inspect or reset session state |
@@ -90,12 +110,40 @@ target.test.darco/
   sitemap.json      # discovery output
 ```
 
+## Configuration
+
+Darco reads an optional `darco.toml` / `.darco.toml` / `darco.json` from the
+current directory (`--config <path>` overrides):
+
+```toml
+target = "https://app.test"
+format = "md"                       # md | json | table (default md)
+
+[fuzz]
+enabled = true                     # master switch for `darco fuzz`
+auto = false                       # if true, `send` also runs fuzz variants
+concurrency = 6
+mutations = ["flip", "type_confusion", "boundary", "sql", "xss"]
+
+headers = ["X-API-Key: deadbeef"]  # base headers on every request
+follow_redirects = true
+timeout = 10.0
+insecure = false
+```
+
 ## Design notes
 
 - **Session state**: `Set-Cookie` and CSRF headers (`X-CSRF-Token`, `X-XSRF-TOKEN`,
   `csrf-token`) are captured from responses and replayed on subsequent requests.
   `--strip-session` removes cookies and auth headers for a single request — the
   primitive behind session-removal bypasses.
+- **Smart fuzz engine**: `darco fuzz` (and `send --fuzz`) builds variants with
+  zero configuration — it flips boolean params, **puts words into numeric fields**
+  (type confusion), tries boundary IDs (`0`, `-1`, `9999999999`, `NaN`), and
+  injects SQL/XSS probes into search-like params. Variants fire concurrently in
+  the background and are classified against the baseline: status flips
+  (200→500, 403→200), big body changes, error/stack-trace leaks, and new
+  auth-cookie issuance all surface as "interesting". See `darco/fuzz.py`.
 - **Lineage**: every mutated send records `parent_id` and the applied mutation
   list, so agents can trace how a request evolved.
 - **Proxy**: `darco proxy` is record-only in v1. Plain HTTP is forwarded through
@@ -105,7 +153,14 @@ target.test.darco/
   parsing, JS endpoint extraction, `robots.txt`/`sitemap.xml` seeding, and
   signal heuristics (boolean-ish params, sensitive paths, CAPTCHA, error leaks,
   rate limits).
-- **Output**: JSON on stdout by default (the agent contract); logs on stderr.
+- **Repeat**: `darco repeat <id> --count N` replays a stored request N
+  times (with optional `--strip-session`/`--set-param`/interval) — the
+  rate-limit and OTP-verification loop without re-typing the request.
+- **Persistent findings**: `darco analyze <id> --save` accumulates
+  `Finding`s into `findings.json` (deduped); `darco findings list|clear`
+  inspect them. The crawler's signals also land here.
+- **Output**: Markdown on stdout by default (human contract); `--json` / `-J`
+  emits the machine contract for agents. Logs go to stderr.
 
 ## Development
 
@@ -115,11 +170,14 @@ target.test.darco/
 
 Tests spin up a local fixture app (login, OTP with rate limiting, CSRF echo,
 CAPTCHA, error leaks) and exercise ingest, session capture, mutations,
-diffing, proxy recording, discovery, and the CLI end-to-end.
+diffing, proxy recording, discovery, fuzzing, and the CLI end-to-end.
 
 ## Roadmap
 
-- v2: playbooks — auto-suggested mutation recipes (OTP bypass, session removal)
-  generated from signals.
-- v3: targeted fuzzer with rate-limit-aware strategies.
-- v4: MCP server + optional `--scope` allowlist.
+- v1: request engine core (ingest → session → send/modify → diff/analyze),
+  recording proxy, `discover`, `repeat`, persistent findings.
+- v2 (done): **smart fuzz engine** (`darco fuzz` / `send --fuzz`) with
+  automatic param mutation + background anomaly detection; **config files**
+  (`darco.toml`) for target/format/headers/fuzz defaults; **on-the-fly mode**
+  (`-u`) with no workspace needed; **markdown-default** output.
+- v3: MCP server + optional `--scope` allowlist.

@@ -1,9 +1,8 @@
 # Mutation Engine
 
 Mutations are the "Burp-style" request edits that make Darco useful to agents.
-They are deliberately **small, composable transforms** — not a fuzzer. The
-OTP-bypass recipe (`--strip-session`) and future playbooks are built on top of
-these primitives.
+They are deliberately **small, composable transforms**. The smart fuzz engine
+(`darco/fuzz.py`) builds variants on top of these primitives automatically.
 
 Module: `darco/mutate.py`.
 
@@ -80,5 +79,6 @@ mutating, so agents can walk: `0007 (stripped) ← 0003 (normal)`.
   `--unset-param`, `--flip-param`, `--strip-session`, `--set-body`,
   `--modify-file`).
 - `parse_mutation_ops()` normalizes the CLI flag shape into a `Mutation`
-  list; `apply_mutations()` performs the work. Future playbooks will construct
-  `Mutation` lists programmatically — keep the two steps separate.
+  list; `apply_mutations()` performs the work. The fuzz engine constructs
+  `Mutation` lists programmatically on top of these — keep the two steps
+  separate.
