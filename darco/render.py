@@ -381,3 +381,101 @@ def md_detect(d: dict) -> str:
         lines.append("_No specific technology signatures matched._")
 
     return "\n".join(lines)
+
+
+def md_passive(d: dict) -> str:
+    domain = d.get("domain") or d.get("target") or ""
+    lines = [f"# Passive Reconnaissance: `{domain}`", ""]
+
+    # Target & IPs
+    ips = d.get("ip_addresses") or []
+    if ips:
+        lines.append(f"**IP Addresses**: {', '.join(f'`{ip}`' for ip in ips)}")
+        lines.append("")
+
+    # WAF & Technologies
+    wafs = d.get("wafs") or []
+    if wafs:
+        waf_strs = []
+        for w in wafs:
+            w_name = w.get("name") if isinstance(w, dict) else getattr(w, "name", "")
+            w_blk = " (BLOCKED)" if (w.get("blocked") if isinstance(w, dict) else getattr(w, "blocked", False)) else ""
+            waf_strs.append(f"`{w_name}{w_blk}`")
+        lines.append(f"**WAF / Shield**: {', '.join(waf_strs)}")
+
+    techs = d.get("technologies") or []
+    if techs:
+        tech_strs = []
+        for t in techs:
+            t_name = t.get("name") if isinstance(t, dict) else getattr(t, "name", "")
+            t_ver = t.get("version") if isinstance(t, dict) else getattr(t, "version", None)
+            t_cat = t.get("category") if isinstance(t, dict) else getattr(t, "category", "")
+            v_str = f" {t_ver}" if t_ver else ""
+            tech_strs.append(f"`{t_name}{v_str}` ({t_cat})")
+        lines.append(f"**Technologies**: {', '.join(tech_strs)}")
+
+    if wafs or techs:
+        lines.append("")
+
+    # DNS Records
+    dns_recs = d.get("dns_records") or []
+    if dns_recs:
+        lines.append(f"## DNS Records ({len(dns_recs)})")
+        lines.append("")
+        lines.append("| Type | Name | Value | TTL |")
+        lines.append("| --- | --- | --- | --- |")
+        for r in dns_recs:
+            rtype = r.get("record_type") if isinstance(r, dict) else getattr(r, "record_type", "")
+            name = r.get("name") if isinstance(r, dict) else getattr(r, "name", "")
+            val = r.get("value") if isinstance(r, dict) else getattr(r, "value", "")
+            ttl = (r.get("ttl") if isinstance(r, dict) else getattr(r, "ttl", None)) or "—"
+            lines.append(f"| `{rtype}` | `{name}` | `{val}` | {ttl} |")
+        lines.append("")
+
+    # Subdomains (CT logs)
+    subdomains = d.get("subdomains") or []
+    if subdomains:
+        lines.append(f"## Subdomains ({len(subdomains)}) — Certificate Transparency")
+        lines.append("")
+        for sub in subdomains[:100]:
+            lines.append(f"- `{sub}`")
+        if len(subdomains) > 100:
+            lines.append(f"- _...and {len(subdomains) - 100} more subdomains_")
+        lines.append("")
+
+    # Security Headers
+    present_hdrs = d.get("security_headers") or {}
+    missing_hdrs = d.get("missing_security_headers") or []
+    if present_hdrs or missing_hdrs:
+        lines.append("## Security Headers")
+        lines.append("")
+        for h, v in present_hdrs.items():
+            lines.append(f"- ✅ **{h}**: `{v[:80]}`")
+        for h in missing_hdrs:
+            lines.append(f"- ❌ **{h}**: _missing_")
+        lines.append("")
+
+    # Security.txt
+    sec_txt = d.get("security_txt") or {}
+    if sec_txt and (sec_txt.get("present") if isinstance(sec_txt, dict) else getattr(sec_txt, "present", False)):
+        contacts = (sec_txt.get("contact") if isinstance(sec_txt, dict) else getattr(sec_txt, "contact", [])) or []
+        expires = sec_txt.get("expires") if isinstance(sec_txt, dict) else getattr(sec_txt, "expires", None)
+        lines.append("## security.txt (RFC 9116)")
+        lines.append("")
+        lines.append(f"- **URL**: `{sec_txt.get('url')}`")
+        if contacts:
+            lines.append(f"- **Contact**: {', '.join(f'`{c}`' for c in contacts)}")
+        if expires:
+            lines.append(f"- **Expires**: `{expires}`")
+        lines.append("")
+
+    # Findings
+    findings = d.get("findings") or []
+    if findings:
+        lines.append(f"## Security Posture & Signals ({len(findings)})")
+        lines.append("")
+        for raw in findings:
+            f = Finding.model_validate(raw) if isinstance(raw, dict) else raw
+            lines.append(_md_finding(f))
+
+    return "\n".join(lines)

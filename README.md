@@ -102,6 +102,7 @@ darco fuzz          # reads ./darco.toml
 | --- | --- |
 | `darco <url>` / `darco -u <url>` | Direct request execution (curl / httpie style) |
 | `darco <id>` / `darco send [id\|url]` | Send or replay a request (with mutations like `--strip-session`, `--flip-param`) |
+| `darco passive [domain\|url]` | Passive OSINT: DNS records, SPF/DMARC email posture, CT log subdomains, security.txt, security headers |
 | `darco detect [url\|id]` | Detect WAF shields and web technologies (servers, frameworks, CMS, frontend) |
 | `darco waf [url\|id]` | Inspect active WAF / CDN shields protecting the target |
 | `darco tech [url\|id]` | Fingerprint web servers, languages, frameworks, CMS, and frontend libraries |

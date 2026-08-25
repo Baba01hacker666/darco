@@ -187,6 +187,40 @@ class SiteMap(DarcoModel):
     wafs: list[WafDetection] = Field(default_factory=list)
 
 
+class DnsRecord(DarcoModel):
+    record_type: str  # "A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "CAA"
+    name: str
+    value: str
+    ttl: int | None = None
+
+
+class SecurityTxt(DarcoModel):
+    present: bool = False
+    url: str = ""
+    contact: list[str] = Field(default_factory=list)
+    expires: str | None = None
+    encryption: list[str] = Field(default_factory=list)
+    acknowledgments: list[str] = Field(default_factory=list)
+    policy: list[str] = Field(default_factory=list)
+    hiring: list[str] = Field(default_factory=list)
+    raw: str = ""
+
+
+class PassiveReport(DarcoModel):
+    target: str
+    domain: str
+    timestamp: str = ""
+    ip_addresses: list[str] = Field(default_factory=list)
+    dns_records: list[DnsRecord] = Field(default_factory=list)
+    subdomains: list[str] = Field(default_factory=list)
+    security_headers: dict[str, str] = Field(default_factory=dict)
+    missing_security_headers: list[str] = Field(default_factory=list)
+    security_txt: SecurityTxt | None = None
+    technologies: list[TechDetection] = Field(default_factory=list)
+    wafs: list[WafDetection] = Field(default_factory=list)
+    findings: list[Finding] = Field(default_factory=list)
+
+
 def to_json(model: BaseModel) -> dict[str, Any]:
     if hasattr(model, "model_dump"):
         return model.model_dump(mode="json")
