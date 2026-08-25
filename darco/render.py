@@ -695,3 +695,139 @@ def md_xss(d: dict) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def md_scan(d: dict) -> str:
+    target = d.get("target") or ""
+    eps = d.get("crawled_endpoints", 0)
+    forms = d.get("crawled_forms", 0)
+    fuzzed = d.get("fuzzed_requests", 0)
+    anoms = d.get("anomalies") or []
+    sqli = d.get("sqli_vulnerabilities") or []
+    xss = d.get("xss_reflections") or []
+    techs = d.get("technologies") or []
+    wafs = d.get("wafs") or []
+    findings = d.get("findings") or []
+
+    lines = [f"# Automated Crawl & Security Scan: `{target}`", ""]
+
+    # Overview summary
+    lines.append("## Scan Overview")
+    lines.append("")
+    lines.append(f"- **Discovered Endpoints**: `{eps}`")
+    lines.append(f"- **Discovered HTML Forms**: `{forms}`")
+    lines.append(f"- **Fuzzed & Audited Requests**: `{fuzzed}`")
+    lines.append(f"- **Fuzzing Anomalies**: `{len(anoms)}`")
+    lines.append(f"- **SQLi Vulnerabilities**: `{len(sqli)}`")
+    lines.append(f"- **XSS Reflections**: `{len(xss)}`")
+    lines.append(f"- **Total Security Findings**: `{len(findings)}`")
+    lines.append("")
+
+    # Tech & WAF
+    if wafs or techs:
+        lines.append("## Target Technology & WAF")
+        lines.append("")
+        if wafs:
+            for w in wafs:
+                w_name = (
+                    w.get("name") if isinstance(w, dict) else getattr(w, "name", "")
+                )
+                w_conf = (
+                    w.get("confidence")
+                    if isinstance(w, dict)
+                    else getattr(w, "confidence", "")
+                )
+                lines.append(f"- 🛡️ **WAF / CDN**: `{w_name}` ({w_conf} confidence)")
+        if techs:
+            for t in techs:
+                t_name = (
+                    t.get("name") if isinstance(t, dict) else getattr(t, "name", "")
+                )
+                t_cat = (
+                    t.get("category")
+                    if isinstance(t, dict)
+                    else getattr(t, "category", "")
+                )
+                lines.append(f"- 📦 **{t_cat.title()}**: `{t_name}`")
+        lines.append("")
+
+    # SQLi Vulnerabilities
+    if sqli:
+        lines.append(f"## 💉 SQL Injection Vulnerabilities ({len(sqli)})")
+        lines.append("")
+        for v in sqli:
+            param = v.get("param") if isinstance(v, dict) else getattr(v, "param", "")
+            inj_type = (
+                v.get("injection_type")
+                if isinstance(v, dict)
+                else getattr(v, "injection_type", "")
+            )
+            conf = (
+                v.get("confidence")
+                if isinstance(v, dict)
+                else getattr(v, "confidence", "high")
+            )
+            ev = (
+                v.get("evidence") if isinstance(v, dict) else getattr(v, "evidence", "")
+            )
+            sugg = (
+                v.get("suggestion")
+                if isinstance(v, dict)
+                else getattr(v, "suggestion", "")
+            )
+            lines.append(f"### **[{conf.upper()}]** Parameter `{param}` (`{inj_type}`)")
+            lines.append(f"- **Evidence**: {ev}")
+            lines.append(f"- **Remediation**: {sugg}")
+            lines.append("")
+
+    # XSS Reflections
+    if xss:
+        lines.append(f"## ⚡ XSS & Reflection Findings ({len(xss)})")
+        lines.append("")
+        for r in xss:
+            param = r.get("param") if isinstance(r, dict) else getattr(r, "param", "")
+            ctx = r.get("context") if isinstance(r, dict) else getattr(r, "context", "")
+            conf = (
+                r.get("confidence")
+                if isinstance(r, dict)
+                else getattr(r, "confidence", "medium")
+            )
+            ev = (
+                r.get("evidence") if isinstance(r, dict) else getattr(r, "evidence", "")
+            )
+            sugg = (
+                r.get("suggestion")
+                if isinstance(r, dict)
+                else getattr(r, "suggestion", "")
+            )
+            lines.append(f"### **[{conf.upper()}]** Parameter `{param}` in `{ctx}`")
+            lines.append(f"- **Evidence**: {ev}")
+            lines.append(f"- **Remediation**: {sugg}")
+            lines.append("")
+
+    # Fuzzing Anomalies
+    if anoms:
+        lines.append(f"## 🔍 Fuzzing Anomalies & Behavior Shifts ({len(anoms)})")
+        lines.append("")
+        lines.append("| Method | Target URL | Mutation / Label | Anomaly | Detail |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for a in anoms[:50]:
+            method = a.get("method", "GET")
+            t_url = a.get("target_url", "")
+            label = a.get("label", "")
+            anom = a.get("anomaly", "")
+            detail = a.get("detail", "")
+            lines.append(
+                f"| `{method}` | `{t_url}` | `{label}` | `{anom}` | `{detail}` |"
+            )
+        lines.append("")
+
+    # General Findings
+    if findings:
+        lines.append(f"## Security Signals & Findings ({len(findings)})")
+        lines.append("")
+        for raw in findings:
+            f = Finding.model_validate(raw) if isinstance(raw, dict) else raw
+            lines.append(_md_finding(f))
+
+    return "\n".join(lines)

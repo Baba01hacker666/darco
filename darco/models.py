@@ -261,6 +261,19 @@ class XssScanResult(DarcoModel):
     reflections: list[XssReflection] = Field(default_factory=list)
 
 
+class AutoScanReport(DarcoModel):
+    target: str
+    crawled_endpoints: int = 0
+    crawled_forms: int = 0
+    fuzzed_requests: int = 0
+    anomalies: list[dict[str, Any]] = Field(default_factory=list)
+    sqli_vulnerabilities: list[SqliFinding] = Field(default_factory=list)
+    xss_reflections: list[XssReflection] = Field(default_factory=list)
+    technologies: list[TechDetection] = Field(default_factory=list)
+    wafs: list[WafDetection] = Field(default_factory=list)
+    findings: list[Finding] = Field(default_factory=list)
+
+
 def to_json(model: BaseModel) -> dict[str, Any]:
     if hasattr(model, "model_dump"):
         return model.model_dump(mode="json")

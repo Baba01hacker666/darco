@@ -102,6 +102,8 @@ darco fuzz          # reads ./darco.toml
 | --- | --- |
 | `darco <url>` / `darco -u <url>` | Direct request execution (curl / httpie style) |
 | `darco <id>` / `darco send [id\|url]` | Send or replay a request (with mutations like `--strip-session`, `--flip-param`) |
+| `darco scan <url>` / `darco auto <url>` | Full automated pipeline: crawl site, detect WAF/tech, auto-fuzz & audit all endpoints/forms for SQLi & XSS |
+| `darco crawl [url]` / `darco discover [url]` | Crawl & parse: endpoints, forms, JS refs, robots, technologies, WAFs, signals (add `--fuzz` to auto-audit) |
 | `darco sql [url\|id]` | SQL injection testing: syntax break (`'`), quote balancing (`''`), arithmetic (`2-1`), and boolean differential |
 | `darco xss [url\|id]` | XSS & reflection audit: canary probing, HTML/attribute/script context detection, character encoding audit |
 | `darco passive [domain\|url]` | Passive OSINT: DNS records, SPF/DMARC email posture, CT log subdomains, security.txt, security headers |
@@ -109,7 +111,6 @@ darco fuzz          # reads ./darco.toml
 | `darco waf [url\|id]` | Inspect active WAF / CDN shields protecting the target |
 | `darco tech [url\|id]` | Fingerprint web servers, languages, frameworks, CMS, and frontend libraries |
 | `darco fuzz [url\|id]` | Smart-default fuzz: flip booleans, type-confuse numerics, boundary IDs, SQL/XSS; report anomalies |
-| `darco discover [url]` | Crawl & parse: endpoints, forms, JS refs, robots, technologies, WAFs, signals |
 | `darco init <target>` | Create a workspace (`<host>.darco/`) |
 | `darco ingest curl "<curl ...>"` | Parse a curl command into history |
 | `darco ingest raw <file>` | Parse a raw HTTP request (Burp style) |

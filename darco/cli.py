@@ -1400,16 +1400,12 @@ def xss_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecure):
         for h in headers:
             if ":" in h:
                 k, v = h.split(":", 1)
-                base_req.headers.append(
-                    NameValue(name=k.strip(), value=v.strip())
-                )
+                base_req.headers.append(NameValue(name=k.strip(), value=v.strip()))
     if cookies:
         for c in cookies:
             if "=" in c:
                 k, v = c.split("=", 1)
-                session.cookies.append(
-                    Cookie(name=k.strip(), value=v.strip())
-                )
+                session.cookies.append(Cookie(name=k.strip(), value=v.strip()))
 
     result = scan_xss(base_req, session=session, param_filter=param)
 
@@ -1499,7 +1495,7 @@ def proxy_cmd(ctx, port, listen, record_only):
         server.stop()
 
 
-# ------------------------------------------------------------------ discover
+# ------------------------------------------------------------------ discover / crawl / auto-scan
 @cli.command("discover")
 @click.argument("url_arg", required=False, default=None)
 @click.option(
@@ -1510,6 +1506,17 @@ def proxy_cmd(ctx, port, listen, record_only):
 @click.option("--workers", type=int, default=5)
 @click.option("--seed", "seed_files", multiple=True, type=click.Path(exists=True))
 @click.option("--no-js", is_flag=True)
+@click.option("--fuzz", is_flag=True, help="Auto-fuzz discovered endpoints and forms")
+@click.option(
+    "--sqli",
+    is_flag=True,
+    help="Auto-test discovered endpoints/forms for SQL injection",
+)
+@click.option(
+    "--xss",
+    is_flag=True,
+    help="Auto-test discovered endpoints/forms for XSS reflection",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -1522,11 +1529,16 @@ def discover_cmd(
     workers,
     seed_files,
     no_js,
+    fuzz,
+    sqli,
+    xss,
     insecure,
     timeout,
 ):
+    """Discover site architecture, endpoints, forms, JS files, and security signals."""
     from .discovery.crawler import discover
-    from .render import md_discover
+    from .render import md_discover, md_scan
+    from .scanner import run_auto_scan
 
     url = url_opt or url_arg
     if not url:
@@ -1541,6 +1553,26 @@ def discover_cmd(
         ws = Workspace.create(url)
 
     cfg = ws.load_config()
+
+    if fuzz or sqli or xss:
+        report = asyncio.run(
+            run_auto_scan(
+                ws,
+                url,
+                depth=depth,
+                max_urls=max_urls,
+                workers=workers,
+                parse_js=not no_js,
+                fuzz=fuzz,
+                sqli=sqli,
+                xss=xss,
+                timeout=timeout,
+                verify=not (cfg.insecure or insecure),
+            )
+        )
+        _emit(ctx, to_json(report), md_scan)
+        return
+
     seeds: list[str] = []
     for f in seed_files:
         seeds.extend(
@@ -1560,6 +1592,150 @@ def discover_cmd(
         )
     )
     _emit(ctx, to_json(sitemap), md_discover)
+
+
+@cli.command("crawl")
+@click.argument("url_arg", required=False, default=None)
+@click.option("-u", "--url", "url_opt", default=None, help="Target URL to crawl")
+@click.option("--depth", type=int, default=3)
+@click.option("--max-urls", type=int, default=500)
+@click.option("--workers", type=int, default=5)
+@click.option("--seed", "seed_files", multiple=True, type=click.Path(exists=True))
+@click.option("--no-js", is_flag=True)
+@click.option("--fuzz", is_flag=True, help="Auto-fuzz discovered endpoints and forms")
+@click.option(
+    "--sqli",
+    is_flag=True,
+    help="Auto-test discovered endpoints/forms for SQL injection",
+)
+@click.option(
+    "--xss",
+    is_flag=True,
+    help="Auto-test discovered endpoints/forms for XSS reflection",
+)
+@click.option("--insecure", is_flag=True)
+@click.option("--timeout", type=float, default=10.0)
+@click.pass_context
+def crawl_cmd(
+    ctx,
+    url_arg,
+    url_opt,
+    depth,
+    max_urls,
+    workers,
+    seed_files,
+    no_js,
+    fuzz,
+    sqli,
+    xss,
+    insecure,
+    timeout,
+):
+    """Crawl a target website and extract endpoints, forms, and JavaScript references."""
+    ctx.invoke(
+        discover_cmd,
+        url_arg=url_arg,
+        url_opt=url_opt,
+        depth=depth,
+        max_urls=max_urls,
+        workers=workers,
+        seed_files=seed_files,
+        no_js=no_js,
+        fuzz=fuzz,
+        sqli=sqli,
+        xss=xss,
+        insecure=insecure,
+        timeout=timeout,
+    )
+
+
+@cli.command("scan")
+@click.argument("url_arg", required=False, default=None)
+@click.option("-u", "--url", "url_opt", default=None, help="Target URL to auto-scan")
+@click.option("--depth", type=int, default=3)
+@click.option("--max-urls", type=int, default=200)
+@click.option("--workers", type=int, default=5)
+@click.option("--no-fuzz", is_flag=True, help="Disable parameter mutation fuzzing")
+@click.option("--no-sqli", is_flag=True, help="Disable SQL injection testing")
+@click.option("--no-xss", is_flag=True, help="Disable XSS reflection testing")
+@click.option("--no-js", is_flag=True)
+@click.option("--insecure", is_flag=True)
+@click.option("--timeout", type=float, default=10.0)
+@click.pass_context
+def scan_cmd(
+    ctx,
+    url_arg,
+    url_opt,
+    depth,
+    max_urls,
+    workers,
+    no_fuzz,
+    no_sqli,
+    no_xss,
+    no_js,
+    insecure,
+    timeout,
+):
+    """All-in-one automated pipeline: crawl target, detect WAF/tech, and auto-fuzz/audit for SQLi and XSS."""
+    ctx.invoke(
+        discover_cmd,
+        url_arg=url_arg,
+        url_opt=url_opt,
+        depth=depth,
+        max_urls=max_urls,
+        workers=workers,
+        seed_files=(),
+        no_js=no_js,
+        fuzz=not no_fuzz,
+        sqli=not no_sqli,
+        xss=not no_xss,
+        insecure=insecure,
+        timeout=timeout,
+    )
+
+
+@cli.command("auto")
+@click.argument("url_arg", required=False, default=None)
+@click.option("-u", "--url", "url_opt", default=None, help="Target URL to auto-scan")
+@click.option("--depth", type=int, default=3)
+@click.option("--max-urls", type=int, default=200)
+@click.option("--workers", type=int, default=5)
+@click.option("--no-fuzz", is_flag=True)
+@click.option("--no-sqli", is_flag=True)
+@click.option("--no-xss", is_flag=True)
+@click.option("--no-js", is_flag=True)
+@click.option("--insecure", is_flag=True)
+@click.option("--timeout", type=float, default=10.0)
+@click.pass_context
+def auto_cmd(
+    ctx,
+    url_arg,
+    url_opt,
+    depth,
+    max_urls,
+    workers,
+    no_fuzz,
+    no_sqli,
+    no_xss,
+    no_js,
+    insecure,
+    timeout,
+):
+    """Alias for automated crawl and security scan."""
+    ctx.invoke(
+        scan_cmd,
+        url_arg=url_arg,
+        url_opt=url_opt,
+        depth=depth,
+        max_urls=max_urls,
+        workers=workers,
+        no_fuzz=no_fuzz,
+        no_sqli=no_sqli,
+        no_xss=no_xss,
+        no_js=no_js,
+        insecure=insecure,
+        timeout=timeout,
+    )
 
 
 # ------------------------------------------------------------------ status / session / export
