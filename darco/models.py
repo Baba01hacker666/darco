@@ -13,19 +13,54 @@ class BodyType(str, enum.Enum):
     RAW = "raw"
 
 
-class NameValue(BaseModel):
+class DarcoModel(BaseModel):
+    """Base class providing cross-version compatibility for Pydantic v1 and v2."""
+
+    def model_copy(self, *, deep: bool = False, update: dict[str, Any] | None = None) -> Any:
+        if hasattr(BaseModel, "model_copy"):
+            return super().model_copy(deep=deep, update=update)
+        return self.copy(deep=deep, update=update)
+
+    def model_dump(self, *, mode: str = "python", **kwargs: Any) -> dict[str, Any]:
+        if hasattr(BaseModel, "model_dump"):
+            return super().model_dump(mode=mode, **kwargs)
+        import json
+
+        return json.loads(self.json(**kwargs))
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        if hasattr(BaseModel, "model_dump_json"):
+            return super().model_dump_json(**kwargs)
+        return self.json(**kwargs)
+
+    @classmethod
+    def model_validate(cls, obj: Any, **kwargs: Any) -> Any:
+        if hasattr(BaseModel, "model_validate"):
+            return super().model_validate(obj, **kwargs)
+        if isinstance(obj, str):
+            return cls.parse_raw(obj)
+        return cls.parse_obj(obj)
+
+    @classmethod
+    def model_validate_json(cls, json_data: str | bytes, **kwargs: Any) -> Any:
+        if hasattr(BaseModel, "model_validate_json"):
+            return super().model_validate_json(json_data, **kwargs)
+        return cls.parse_raw(json_data)
+
+
+class NameValue(DarcoModel):
     name: str
     value: str = ""
 
 
-class Cookie(BaseModel):
+class Cookie(DarcoModel):
     name: str
     value: str = ""
     domain: str | None = None
     path: str | None = None
 
 
-class Request(BaseModel):
+class Request(DarcoModel):
     method: str = "GET"
     url: str
     headers: list[NameValue] = Field(default_factory=list)
@@ -45,7 +80,7 @@ class Request(BaseModel):
     session_stripped: bool = False
 
 
-class Response(BaseModel):
+class Response(DarcoModel):
     status_code: int
     reason: str = ""
     headers: list[NameValue] = Field(default_factory=list)
@@ -58,7 +93,7 @@ class Response(BaseModel):
     set_cookies: list[Cookie] = Field(default_factory=list)
 
 
-class HistoryRecord(BaseModel):
+class HistoryRecord(DarcoModel):
     id: str
     ts: str
     request: Request
@@ -66,7 +101,7 @@ class HistoryRecord(BaseModel):
     error: str | None = None
 
 
-class WorkspaceConfig(BaseModel):
+class WorkspaceConfig(DarcoModel):
     version: int = 1
     target: str
     created_at: str
@@ -76,13 +111,13 @@ class WorkspaceConfig(BaseModel):
     insecure: bool = False
 
 
-class SessionState(BaseModel):
+class SessionState(DarcoModel):
     cookies: list[Cookie] = Field(default_factory=list)
     csrf_headers: dict[str, list[NameValue]] = Field(default_factory=dict)
     updated_at: str = ""
 
 
-class Finding(BaseModel):
+class Finding(DarcoModel):
     id: str
     type: str
     severity: str = "info"
@@ -92,7 +127,7 @@ class Finding(BaseModel):
     request_id: str | None = None
 
 
-class Endpoint(BaseModel):
+class Endpoint(DarcoModel):
     url: str
     methods: list[str] = Field(default_factory=list)
     params: list[NameValue] = Field(default_factory=list)
@@ -103,7 +138,7 @@ class Endpoint(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
-class FormInput(BaseModel):
+class FormInput(DarcoModel):
     name: str
     type: str = "text"
     hidden: bool = False
@@ -111,19 +146,19 @@ class FormInput(BaseModel):
     interesting: bool = False
 
 
-class Form(BaseModel):
+class Form(DarcoModel):
     action: str
     method: str = "GET"
     inputs: list[FormInput] = Field(default_factory=list)
     captcha: bool = False
 
 
-class JsFile(BaseModel):
+class JsFile(DarcoModel):
     url: str
     endpoints: list[str] = Field(default_factory=list)
 
 
-class SiteMap(BaseModel):
+class SiteMap(DarcoModel):
     target: str = ""
     crawled_at: str = ""
     stats: dict[str, int] = Field(default_factory=dict)
@@ -135,4 +170,8 @@ class SiteMap(BaseModel):
 
 
 def to_json(model: BaseModel) -> dict[str, Any]:
-    return model.model_dump(mode="json")
+    if hasattr(model, "model_dump"):
+        return model.model_dump(mode="json")
+    import json
+
+    return json.loads(model.json())
