@@ -479,3 +479,89 @@ def md_passive(d: dict) -> str:
             lines.append(_md_finding(f))
 
     return "\n".join(lines)
+
+
+def md_sqli(d: dict) -> str:
+    target = d.get("target") or ""
+    tested = d.get("tested_params") or []
+    vulns = d.get("vulnerabilities") or []
+
+    lines = [f"# SQL Injection Analysis: `{target}`", ""]
+    lines.append(
+        f"- **Parameters Tested**: {', '.join(f'`{p}`' for p in tested) if tested else '_none_'}"
+    )
+    lines.append(
+        f"- **Vulnerabilities / Anomalies Detected**: `{len(vulns)}`"
+    )
+    lines.append("")
+
+    if not vulns:
+        lines.append("## Results")
+        lines.append("")
+        lines.append(
+            "_No SQL injection indicators or syntax break anomalies detected across tested parameters._"
+        )
+        return "\n".join(lines)
+
+    lines.append("## Vulnerable Parameters")
+    lines.append("")
+    for v in vulns:
+        param = v.get("param") if isinstance(v, dict) else getattr(v, "param", "")
+        p_type = (
+            v.get("param_type")
+            if isinstance(v, dict)
+            else getattr(v, "param_type", "")
+        )
+        inj_type = (
+            v.get("injection_type")
+            if isinstance(v, dict)
+            else getattr(v, "injection_type", "")
+        )
+        conf = (
+            v.get("confidence")
+            if isinstance(v, dict)
+            else getattr(v, "confidence", "potential")
+        )
+        engine = (
+            v.get("db_engine")
+            if isinstance(v, dict)
+            else getattr(v, "db_engine", None)
+        )
+        payload = (
+            v.get("payload") if isinstance(v, dict) else getattr(v, "payload", "")
+        )
+        base_st = (
+            v.get("baseline_status")
+            if isinstance(v, dict)
+            else getattr(v, "baseline_status", 0)
+        )
+        pay_st = (
+            v.get("payload_status")
+            if isinstance(v, dict)
+            else getattr(v, "payload_status", 0)
+        )
+        evidence = (
+            v.get("evidence") if isinstance(v, dict) else getattr(v, "evidence", "")
+        )
+        suggestion = (
+            v.get("suggestion")
+            if isinstance(v, dict)
+            else getattr(v, "suggestion", "")
+        )
+
+        badge = f"**[{conf.upper()}]**"
+        engine_str = f" `{engine}`" if engine else ""
+        lines.append(f"### {badge} Parameter `{param}` ({p_type}){engine_str}")
+        lines.append(f"- **Technique**: `{inj_type}`")
+        if payload:
+            lines.append(f"- **Probe Payload**: `{payload}`")
+        lines.append(
+            f"- **Status Code**: `{base_st}` (baseline) → `{pay_st}` (probe)"
+        )
+        if evidence:
+            lines.append(f"- **Evidence**: {evidence}")
+        if suggestion:
+            lines.append(f"- **Remediation**: {suggestion}")
+        lines.append("")
+
+    return "\n".join(lines)

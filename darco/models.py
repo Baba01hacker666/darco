@@ -221,6 +221,25 @@ class PassiveReport(DarcoModel):
     findings: list[Finding] = Field(default_factory=list)
 
 
+class SqliFinding(DarcoModel):
+    param: str
+    param_type: str  # "query", "form", "json"
+    injection_type: str  # "error_based", "quote_balancing", "arithmetic_evaluation", "boolean_differential", "status_anomaly"
+    db_engine: str | None = None
+    confidence: str  # "confirmed", "high", "medium", "potential"
+    payload: str
+    baseline_status: int
+    payload_status: int
+    evidence: str
+    suggestion: str
+
+
+class SqliScanResult(DarcoModel):
+    target: str
+    tested_params: list[str] = Field(default_factory=list)
+    vulnerabilities: list[SqliFinding] = Field(default_factory=list)
+
+
 def to_json(model: BaseModel) -> dict[str, Any]:
     if hasattr(model, "model_dump"):
         return model.model_dump(mode="json")

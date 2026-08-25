@@ -1191,6 +1191,133 @@ def info_cmd(
     )
 
 
+# ------------------------------------------------------------------ sql injection testing
+@cli.command("sql")
+@click.argument("target", required=False, default=None)
+@click.option(
+    "-u",
+    "--url",
+    default=None,
+    help="Target URL (e.g. http://example.com/item?id=1)",
+)
+@click.option("--from", "from_id", default=None, help="Stored record ID to test")
+@click.option(
+    "-p", "--param", default=None, help="Specific parameter name to test"
+)
+@click.option(
+    "--save", is_flag=True, help="Save findings to workspace findings.json"
+)
+@click.option(
+    "--insecure", is_flag=True, default=False, help="Disable TLS verification"
+)
+@click.pass_context
+def sql_cmd(ctx, target, url, from_id, param, save, insecure):
+    """SQL injection testing: syntax break, quote balancing, arithmetic evaluation, and boolean differential."""
+    from .models import Finding, Request
+    from .render import md_sqli
+    from .sqli import scan_sqli
+
+    if target:
+        if target.isdigit() or (target.startswith("0") and len(target) == 4):
+            from_id = from_id or target
+        else:
+            url = url or target
+
+    base_req = None
+    session = None
+    ws = None
+
+    if from_id:
+        ws = _find_workspace(ctx)
+        record = ws.get_record(from_id)
+        base_req = record.request
+        session = ws.load_session()
+    else:
+        if not url:
+            cfg = (ctx.obj or {}).get("config")
+            if cfg and cfg.target:
+                url = cfg.target
+            else:
+                ws = _find_workspace(ctx, require=False)
+                if ws:
+                    try:
+                        url = ws.load_config().target
+                    except DarcoError:
+                        pass
+        if not url:
+            raise DarcoError(
+                "provide a target URL with parameters: 'darco sql <url>' or -u <url> or --from <id>"
+            )
+        if not url.startswith(("http://", "https://")):
+            url = "http://" + url
+        split = urlsplit(url)
+        params = [
+            NameValue(name=k, value=v)
+            for k, v in parse_qsl(split.query, keep_blank_values=True)
+        ]
+        clean_url = url.split("?", 1)[0] if split.query else url
+        base_req = Request(
+            method="GET",
+            url=clean_url,
+            params=params,
+            verify=not insecure,
+            source="oneshot",
+        )
+        session = _one_shot_session()
+
+    result = scan_sqli(base_req, session=session, param_filter=param)
+
+    if save:
+        ws = ws or _find_workspace(ctx, auto_create_target=base_req.url)
+        if ws:
+            findings = []
+            for v in result.vulnerabilities:
+                findings.append(
+                    Finding(
+                        id=f"sqli-{v.param}-{v.injection_type}",
+                        type=f"sqli_{v.injection_type}",
+                        severity=(
+                            "high"
+                            if v.confidence in ("confirmed", "high")
+                            else "medium"
+                        ),
+                        location=f"{base_req.method} {base_req.url} ({v.param})",
+                        evidence=v.evidence,
+                        suggestion=v.suggestion,
+                    )
+                )
+            ws.add_findings(findings)
+
+    _emit(ctx, to_json(result), md_sqli)
+
+
+@cli.command("sqli")
+@click.argument("target", required=False, default=None)
+@click.option(
+    "-u", "--url", default=None, help="Target URL to test for SQL injection"
+)
+@click.option("--from", "from_id", default=None, help="Stored record ID to test")
+@click.option(
+    "-p", "--param", default=None, help="Specific parameter name to test"
+)
+@click.option(
+    "--save", is_flag=True, help="Save findings to workspace findings.json"
+)
+@click.option("--insecure", is_flag=True, default=False)
+@click.pass_context
+def sqli_cmd(ctx, target, url, from_id, param, save, insecure):
+    """Alias for SQL injection testing."""
+    ctx.invoke(
+        sql_cmd,
+        target=target,
+        url=url,
+        from_id=from_id,
+        param=param,
+        save=save,
+        insecure=insecure,
+    )
+
+
 # ------------------------------------------------------------------ proxy
 @cli.command("proxy")
 @click.option("--port", type=int, default=8080)
