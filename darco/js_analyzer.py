@@ -229,12 +229,21 @@ def _generate_findings(
     """Generate structured security findings from discovered JS secrets and high-interest API routes."""
     findings: list[Finding] = []
 
-    # 1. Hardcoded secrets
+    # 1. Hardcoded secrets & default credentials
     for s in secrets:
         sev = (
             "high"
             if s.type
-            in ("jwt_token", "aws_access_key", "google_api_key", "bearer_token")
+            in (
+                "jwt_token",
+                "aws_access_key",
+                "google_api_key",
+                "bearer_token",
+                "default_credentials",
+                "auth_credentials",
+                "hardcoded_password",
+                "basic_auth",
+            )
             else "medium"
         )
         findings.append(
@@ -243,8 +252,8 @@ def _generate_findings(
                 type=f"js_{s.type}",
                 severity=sev,
                 location=f"{s.source_js}",
-                evidence=f"Discovered {s.type}: {s.value[:40]}... in {s.source_js}",
-                suggestion="Remove hardcoded API keys and credentials from client-facing JavaScript bundles.",
+                evidence=f"Discovered {s.type}: {s.value[:60]} in {s.source_js}",
+                suggestion="Remove hardcoded API keys and default credentials from client-facing JavaScript bundles immediately.",
             )
         )
 

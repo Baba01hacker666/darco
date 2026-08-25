@@ -56,10 +56,15 @@ function callGraphql() {
 // Webpack chunks
 __webpack_require__.e("chunk-admin");
 
-// Exposed credentials
+// Exposed credentials & default accounts
 const config = {
     apiKey: "AIzaSyD-1234567890abcdefghijklmnopqrstu",
-    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.do_not_leak_signature_here"
+    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.do_not_leak_signature_here",
+    auth: { username: "admin", password: "password123" },
+    defaultUser: "testuser",
+    defaultPass: "SuperSecret99!",
+    adminPass: "MasterAdminPass!",
+    authorization: "Basic YWRtaW46c2VjcmV0MTIz"
 };
 """
 
@@ -87,10 +92,18 @@ def test_extract_detailed_js_endpoints():
     assert "page" in user_ep.params
     assert "limit" in user_ep.params
 
-    # Check secrets
+    # Check secrets & default credentials
     secret_types = {s.type for s in secrets}
     assert "google_api_key" in secret_types
     assert "jwt_token" in secret_types
+    assert "default_credentials" in secret_types or "auth_credentials" in secret_types
+    assert "hardcoded_password" in secret_types
+    assert "basic_auth" in secret_types
+
+    # Check basic auth decoded
+    basic_secret = next((s for s in secrets if s.type == "basic_auth"), None)
+    assert basic_secret is not None
+    assert "admin:secret123" in basic_secret.value
 
     # Check chunks
     assert "chunk-admin" in chunks

@@ -1,3 +1,5 @@
+import base64
+import binascii
 import re
 from urllib.parse import parse_qsl, urljoin
 
@@ -93,6 +95,42 @@ SECRET_PATTERNS = [
         "internal_ip",
         re.compile(
             r"""\b(https?://(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d+)?[^'"\s]*)"""
+        ),
+    ),
+]
+
+# 6. Default & hardcoded credentials in JS configs
+CREDENTIAL_PATTERNS = [
+    # Basic auth: Authorization: "Basic YWRtaW46YWRtaW4="
+    (
+        "basic_auth",
+        re.compile(
+            r"""['"]?(?:Authorization|auth)['"]?\s*:\s*['"]Basic\s+([A-Za-z0-9+/=]{6,})['"]""",
+            re.IGNORECASE,
+        ),
+    ),
+    # username: "admin", password: "password123"
+    (
+        "default_credentials",
+        re.compile(
+            r"""(?:\b(?:default_?user|username|user|login|email)\b\s*[:=]\s*['"]([^'"]{2,30})['"]\s*,\s*\b(?:default_?pass|password|pass|secret)\b\s*[:=]\s*['"]([^'"]{2,50})['"])""",
+            re.IGNORECASE,
+        ),
+    ),
+    # auth: { user: "admin", pass: "admin" }
+    (
+        "auth_credentials",
+        re.compile(
+            r"""\b(?:auth|credentials|login|account|defaultCredentials)\s*:\s*\{[^}]*\b(?:username|user|email|login)\b\s*:\s*['"]([^'"]+)['"][^}]*\b(?:password|pass|secret)\b\s*:\s*['"]([^'"]+)['"]""",
+            re.IGNORECASE,
+        ),
+    ),
+    # masterPassword, adminPassword, dbPassword, rootPassword = "..."
+    (
+        "hardcoded_password",
+        re.compile(
+            r"""\b(admin_?pass|root_?pass|db_?pass|master_?key|default_?password|secret_?key|master_?password)\s*[:=]\s*['"]([^'"]{3,50})['"]""",
+            re.IGNORECASE,
         ),
     ),
 ]
@@ -239,6 +277,37 @@ def extract_detailed_js_endpoints(
                         value=val,
                         source_js=source_name,
                         evidence=match.group(0)[:100],
+                    )
+                )
+
+    # 6. Default & hardcoded credentials in JS
+    for cred_type, cred_regex in CREDENTIAL_PATTERNS:
+        for match in cred_regex.finditer(js_text):
+            groups = match.groups()
+            evidence = match.group(0)[:120]
+            val = ""
+            if cred_type == "basic_auth":
+                b64_val = groups[0]
+                try:
+                    decoded = base64.b64decode(b64_val).decode(
+                        "utf-8", errors="replace"
+                    )
+                    val = f"Basic {b64_val} (Decoded: {decoded})"
+                except (ValueError, binascii.Error):
+                    val = f"Basic {b64_val}"
+            elif len(groups) == 2:
+                val = f"username: {groups[0]}, password: {groups[1]}"
+            elif len(groups) == 1:
+                val = groups[0]
+
+            if val and val not in seen_secrets:
+                seen_secrets.add(val)
+                secrets.append(
+                    JsSecret(
+                        type=cred_type,
+                        value=val,
+                        source_js=source_name,
+                        evidence=evidence,
                     )
                 )
 

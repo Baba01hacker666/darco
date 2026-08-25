@@ -957,13 +957,15 @@ def md_js(d: dict) -> str:
     lines.append(f"- **Discovered API Endpoints**: `{len(endpoints)}`")
     lines.append(f"- **GraphQL Endpoints**: `{len(gql)}`")
     lines.append(f"- **Discovered Webpack / SPA Chunks**: `{len(chunks)}`")
-    lines.append(f"- **Exposed Secrets / Tokens**: `{len(secrets)}`")
+    lines.append(f"- **Exposed Secrets & Default Credentials**: `{len(secrets)}`")
     lines.append(f"- **Security Findings**: `{len(findings)}`")
     lines.append("")
 
-    # Exposed Secrets
+    # Exposed Secrets & Default Credentials
     if secrets:
-        lines.append(f"## 🔑 Exposed Secrets & API Tokens ({len(secrets)})")
+        lines.append(
+            f"## 🔑 Exposed Secrets & Default Credentials ({len(secrets)})"
+        )
         lines.append("")
         for s in secrets:
             s_type = s.get("type") if isinstance(s, dict) else getattr(s, "type", "")
