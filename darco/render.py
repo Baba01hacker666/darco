@@ -831,3 +831,71 @@ def md_scan(d: dict) -> str:
             lines.append(_md_finding(f))
 
     return "\n".join(lines)
+
+
+def md_upload(d: dict) -> str:
+    target = d.get("target") or ""
+    field = d.get("tested_field", "file")
+    tests = d.get("tests_run", 0)
+    accepted = d.get("accepted_formats") or []
+    findings = d.get("findings") or []
+
+    lines = [f"# File Upload Security Audit: `{target}`", ""]
+    lines.append(f"- **Tested Upload Field**: `{field}`")
+    lines.append(f"- **Upload Test Probes**: `{tests}`")
+    lines.append(
+        f"- **Accepted Formats / Policies**: {', '.join(f'`{f}`' for f in accepted) if accepted else '_none accepted_'}"
+    )
+    lines.append(f"- **Vulnerabilities / Warnings Detected**: `{len(findings)}`")
+    lines.append("")
+
+    if not findings:
+        lines.append("## Results")
+        lines.append("")
+        lines.append(
+            "_No dangerous file upload permissions or bypass vulnerabilities detected on tested formats._"
+        )
+        return "\n".join(lines)
+
+    lines.append("## Upload Security Findings")
+    lines.append("")
+    for f in findings:
+        param = f.get("param") if isinstance(f, dict) else getattr(f, "param", "")
+        fn = f.get("filename") if isinstance(f, dict) else getattr(f, "filename", "")
+        v_type = (
+            f.get("vulnerability_type")
+            if isinstance(f, dict)
+            else getattr(f, "vulnerability_type", "")
+        )
+        conf = (
+            f.get("confidence")
+            if isinstance(f, dict)
+            else getattr(f, "confidence", "high")
+        )
+        status = (
+            f.get("status_code")
+            if isinstance(f, dict)
+            else getattr(f, "status_code", 0)
+        )
+        file_url = (
+            f.get("file_url") if isinstance(f, dict) else getattr(f, "file_url", None)
+        )
+        evidence = (
+            f.get("evidence") if isinstance(f, dict) else getattr(f, "evidence", "")
+        )
+        suggestion = (
+            f.get("suggestion") if isinstance(f, dict) else getattr(f, "suggestion", "")
+        )
+
+        badge = f"**[{conf.upper()}]**"
+        lines.append(f"### {badge} Upload `{v_type}` via `{param}` (`{fn}`)")
+        lines.append(f"- **Response Status**: `{status}`")
+        if file_url:
+            lines.append(f"- **Accessible File URL**: `{file_url}`")
+        if evidence:
+            lines.append(f"- **Evidence**: {evidence}")
+        if suggestion:
+            lines.append(f"- **Remediation**: {suggestion}")
+        lines.append("")
+
+    return "\n".join(lines)

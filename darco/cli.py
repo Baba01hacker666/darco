@@ -1459,6 +1459,129 @@ def reflect_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecu
     )
 
 
+# ------------------------------------------------------------------ file upload audit
+@cli.command("upload")
+@click.argument("target", required=False, default=None)
+@click.option(
+    "-u",
+    "--url",
+    default=None,
+    help="Target upload URL (e.g. http://example.com/api/upload)",
+)
+@click.option("--from", "from_id", default=None, help="Stored record ID to audit")
+@click.option(
+    "-p",
+    "--param",
+    "file_field",
+    default=None,
+    help="File input field name (e.g. file, avatar, upload)",
+)
+@click.option(
+    "-H",
+    "--header",
+    "headers",
+    multiple=True,
+    help="Add custom headers (e.g. -H 'Authorization: Bearer ...')",
+)
+@click.option(
+    "-C",
+    "--cookie",
+    "cookies",
+    multiple=True,
+    help="Add custom cookies (e.g. -C 'session=xyz')",
+)
+@click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
+@click.option(
+    "--insecure", is_flag=True, default=False, help="Disable TLS verification"
+)
+@click.pass_context
+def upload_cmd(ctx, target, url, from_id, file_field, headers, cookies, save, insecure):
+    """File upload security audit: tests SVG (XSS vector), HTML, MIME bypass, and storage security."""
+    from .models import Cookie, Finding, NameValue, Request
+    from .render import md_upload
+    from .upload import audit_file_upload
+
+    if target:
+        if target.isdigit() or (target.startswith("0") and len(target) == 4):
+            from_id = from_id or target
+        else:
+            url = url or target
+
+    base_req = None
+    session = None
+    ws = None
+
+    if from_id:
+        ws = _find_workspace(ctx)
+        record = ws.get_record(from_id)
+        base_req = record.request.model_copy(deep=True)
+        session = ws.load_session()
+    else:
+        if not url:
+            cfg = (ctx.obj or {}).get("config")
+            if cfg and cfg.target:
+                url = cfg.target
+            else:
+                ws = _find_workspace(ctx, require=False)
+                if ws:
+                    try:
+                        url = ws.load_config().target
+                    except DarcoError:
+                        pass
+        if not url:
+            raise DarcoError(
+                "provide a target upload URL: 'darco upload <url>' or -u <url> or --from <id>"
+            )
+        if not url.startswith(("http://", "https://")):
+            url = "http://" + url
+
+        base_req = Request(
+            method="POST",
+            url=url,
+            verify=not insecure,
+            source="oneshot",
+        )
+        ws = _find_workspace(ctx, require=False)
+        session = ws.load_session() if ws else _one_shot_session()
+
+    # Append any user-provided headers or cookies
+    if headers:
+        for h in headers:
+            if ":" in h:
+                k, v = h.split(":", 1)
+                base_req.headers.append(NameValue(name=k.strip(), value=v.strip()))
+    if cookies:
+        for c in cookies:
+            if "=" in c:
+                k, v = c.split("=", 1)
+                session.cookies.append(Cookie(name=k.strip(), value=v.strip()))
+
+    result = audit_file_upload(base_req, session=session, file_field=file_field)
+
+    if save:
+        ws = ws or _find_workspace(ctx, auto_create_target=base_req.url)
+        if ws:
+            findings = []
+            for f in result.findings:
+                findings.append(
+                    Finding(
+                        id=f"upload-{f.param}-{f.vulnerability_type}",
+                        type=f"upload_{f.vulnerability_type}",
+                        severity=(
+                            "high"
+                            if f.confidence in ("confirmed", "high")
+                            else "medium"
+                        ),
+                        location=f"{base_req.method} {base_req.url} ({f.param})",
+                        evidence=f.evidence,
+                        suggestion=f.suggestion,
+                    )
+                )
+            ws.add_findings(findings)
+
+    _emit(ctx, to_json(result), md_upload)
+
+
 # ------------------------------------------------------------------ proxy
 @cli.command("proxy")
 @click.option("--port", type=int, default=8080)

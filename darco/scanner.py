@@ -13,6 +13,7 @@ from .models import (
     SiteMap,
 )
 from .sqli import scan_sqli
+from .upload import audit_file_upload
 from .workspace import Workspace
 from .xss import scan_xss
 
@@ -50,9 +51,7 @@ def _build_requests_from_sitemap(
     for f in sitemap.forms:
         action_url = f.action
         method = (f.method or "GET").upper()
-        clean_action = (
-            action_url.split("?", 1)[0] if "?" in action_url else action_url
-        )
+        clean_action = action_url.split("?", 1)[0] if "?" in action_url else action_url
 
         params = [
             NameValue(
@@ -220,6 +219,44 @@ async def run_auto_scan(
                         )
             except (httpx.HTTPError, OSError, TimeoutError, ValueError):
                 pass
+
+    # Step 3: Check for file upload forms and run file upload security audits
+    for f in sitemap.forms:
+        file_inputs = [inp for inp in f.inputs if inp.type == "file"]
+        if file_inputs:
+            action_url = f.action
+            clean_action = (
+                action_url.split("?", 1)[0] if "?" in action_url else action_url
+            )
+            for finp in file_inputs:
+                try:
+                    up_req = Request(
+                        method=(f.method or "POST").upper(),
+                        url=clean_action,
+                        verify=verify,
+                        source="form",
+                    )
+                    up_res = audit_file_upload(
+                        up_req, session=session, file_field=finp.name
+                    )
+                    for uf in up_res.findings:
+                        report.upload_findings.append(uf)
+                        all_new_findings.append(
+                            Finding(
+                                id=f"upload-{uf.param}-{uf.vulnerability_type}",
+                                type=f"upload_{uf.vulnerability_type}",
+                                severity=(
+                                    "high"
+                                    if uf.confidence in ("confirmed", "high")
+                                    else "medium"
+                                ),
+                                location=f"{up_req.method} {up_req.url} ({uf.param})",
+                                evidence=uf.evidence,
+                                suggestion=uf.suggestion,
+                            )
+                        )
+                except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+                    pass
 
     if all_new_findings:
         report.findings.extend(all_new_findings)

@@ -106,6 +106,7 @@ darco fuzz          # reads ./darco.toml
 | `darco crawl [url]` / `darco discover [url]` | Crawl & parse: endpoints, forms, JS refs, robots, technologies, WAFs, signals (add `--fuzz` to auto-audit) |
 | `darco sql [url\|id]` | SQL injection testing: syntax break (`'`), quote balancing (`''`), arithmetic (`2-1`), and boolean differential |
 | `darco xss [url\|id]` | XSS & reflection audit: canary probing, HTML/attribute/script context detection, character encoding audit |
+| `darco upload [url\|id]` | File upload security audit: SVG (XSS vector), HTML, MIME bypass, and storage header defenses |
 | `darco passive [domain\|url]` | Passive OSINT: DNS records, SPF/DMARC email posture, CT log subdomains, security.txt, security headers |
 | `darco detect [url\|id]` | Detect WAF shields and web technologies (servers, frameworks, CMS, frontend) |
 | `darco waf [url\|id]` | Inspect active WAF / CDN shields protecting the target |

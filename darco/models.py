@@ -269,9 +269,30 @@ class AutoScanReport(DarcoModel):
     anomalies: list[dict[str, Any]] = Field(default_factory=list)
     sqli_vulnerabilities: list[SqliFinding] = Field(default_factory=list)
     xss_reflections: list[XssReflection] = Field(default_factory=list)
+    upload_findings: list[UploadFinding] = Field(default_factory=list)
     technologies: list[TechDetection] = Field(default_factory=list)
     wafs: list[WafDetection] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
+
+
+class UploadFinding(DarcoModel):
+    param: str
+    filename: str
+    content_type: str
+    status_code: int
+    file_url: str | None = None
+    vulnerability_type: str  # "svg_stored_xss", "html_stored_xss", "mime_spoofing_bypass", "missing_content_disposition", "dangerous_extension_allowed"
+    confidence: str = "high"  # "confirmed", "high", "medium", "low"
+    evidence: str = ""
+    suggestion: str = ""
+
+
+class UploadAuditResult(DarcoModel):
+    target: str
+    tested_field: str = "file"
+    tests_run: int = 0
+    accepted_formats: list[str] = Field(default_factory=list)
+    findings: list[UploadFinding] = Field(default_factory=list)
 
 
 def to_json(model: BaseModel) -> dict[str, Any]:
