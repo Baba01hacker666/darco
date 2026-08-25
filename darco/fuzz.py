@@ -15,21 +15,34 @@ classifies each response against the baseline so the interesting ones surface:
     - response body differs from baseline (normalized)
 """
 
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from difflib import SequenceMatcher
-from urllib.parse import urlsplit
-import re
 
 from . import mutate as _mutate
-from .engine import execute, host_of
+from .engine import execute
 from .models import NameValue, Request, Response, SessionState
 from .mutate import Mutation
 
 BOOLEAN_VALUES = {"true", "false", "1", "0", "yes", "no", "on", "off"}
 SQL_PROBES = ["' OR '1'='1", "1' OR '1'='1' --", "admin'--", "1; DROP TABLE users--"]
-XSS_PROBES = ["<script>alert(1)</script>", "\"><svg/onload=alert(1)>", "${jndi:ldap://x/}"]
+XSS_PROBES = [
+    "<script>alert(1)</script>",
+    '"><svg/onload=alert(1)>',
+    "${jndi:ldap://x/}",
+]
 BOUNDARY_IDS = ["0", "-1", "9999999999", "1e9", "NaN", "0000001", "1.0"]
-TYPE_CONFUSION_WORDS = ["abc", "xyz", "root", "admin", "NaN", "null", "true", "[]", "{}"]
+TYPE_CONFUSION_WORDS = [
+    "abc",
+    "xyz",
+    "root",
+    "admin",
+    "NaN",
+    "null",
+    "true",
+    "[]",
+    "{}",
+]
 
 ERROR_PATTERNS = [
     r"Traceback \(most recent call last\)",
@@ -45,7 +58,13 @@ ERROR_PATTERNS = [
     r"Exception in thread",
 ]
 AUTH_COOKIE = re.compile(r"session|token|jwt|auth|sid|remember", re.IGNORECASE)
-_AUTH_HEADERS = {"authorization", "cookie", "x-api-key", "x-auth-token", "proxy-authorization"}
+_AUTH_HEADERS = {
+    "authorization",
+    "cookie",
+    "x-api-key",
+    "x-auth-token",
+    "proxy-authorization",
+}
 
 
 def _is_probably_numeric(v: str) -> bool:
@@ -77,12 +96,29 @@ def build_variants(req: Request) -> list[tuple[str, Request, list[str]]]:
             add(f"flip:{p.name}", [Mutation("flip_param", name=p.name)])
         if _is_probably_numeric(p.value):
             for w in TYPE_CONFUSION_WORDS[:3]:
-                add(f"type-confuse:{p.name}={w}", [Mutation("set_param", name=p.name, value=w)])
+                add(
+                    f"type-confuse:{p.name}={w}",
+                    [Mutation("set_param", name=p.name, value=w)],
+                )
             for b in BOUNDARY_IDS[:3]:
-                add(f"boundary:{p.name}={b}", [Mutation("set_param", name=p.name, value=b)])
-        if p.name.lower() in {"id", "user_id", "uid", "account", "page", "offset", "limit"}:
+                add(
+                    f"boundary:{p.name}={b}",
+                    [Mutation("set_param", name=p.name, value=b)],
+                )
+        if p.name.lower() in {
+            "id",
+            "user_id",
+            "uid",
+            "account",
+            "page",
+            "offset",
+            "limit",
+        }:
             for b in BOUNDARY_IDS:
-                add(f"boundary:{p.name}={b}", [Mutation("set_param", name=p.name, value=b)])
+                add(
+                    f"boundary:{p.name}={b}",
+                    [Mutation("set_param", name=p.name, value=b)],
+                )
 
     for p in all_params:
         if p.name.lower() in {"q", "search", "name", "username", "input", "term"}:
@@ -96,7 +132,9 @@ def build_variants(req: Request) -> list[tuple[str, Request, list[str]]]:
     return variants
 
 
-def _classify(label: str, baseline: Response | None, resp: Response | None, error: str | None) -> dict | None:
+def _classify(
+    label: str, baseline: Response | None, resp: Response | None, error: str | None
+) -> dict | None:
     if error:
         return {"label": label, "anomaly": "request_error", "detail": error}
     if resp is None:
@@ -129,7 +167,9 @@ def _classify(label: str, baseline: Response | None, resp: Response | None, erro
         ratio = SequenceMatcher(None, baseline.body, resp.body).ratio()
         if ratio < 0.85:
             out["anomaly"] = "body_changed"
-            out["detail"] = f"similarity {ratio:.2f} (baseline {baseline.body_len}B -> {resp.body_len}B)"
+            out["detail"] = (
+                f"similarity {ratio:.2f} (baseline {baseline.body_len}B -> {resp.body_len}B)"
+            )
             return out
 
     return None  # boring, same as baseline

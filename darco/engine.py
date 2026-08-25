@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -55,7 +55,9 @@ def effective_cookies(request: Request, session: SessionState) -> list[Cookie]:
     return merged
 
 
-def effective_headers(request: Request, session: SessionState, base_headers: list[NameValue] | None = None) -> list[NameValue]:
+def effective_headers(
+    request: Request, session: SessionState, base_headers: list[NameValue] | None = None
+) -> list[NameValue]:
     headers = list(request.headers)
     if request.session_stripped:
         headers = [h for h in headers if h.name.lower() not in AUTH_HEADER_NAMES]
@@ -91,7 +93,9 @@ def execute(
             domain=c.domain or host_of(url),
             path=c.path or "/",
         )
-    headers = [(h.name, h.value) for h in effective_headers(request, session, base_headers)]
+    headers = [
+        (h.name, h.value) for h in effective_headers(request, session, base_headers)
+    ]
 
     content = None
     json_body = None
@@ -106,7 +110,9 @@ def execute(
     elif request.body_type == BodyType.RAW:
         content = request.body_raw.encode(request.body_encoding)
 
-    with httpx.Client(verify=request.verify, timeout=request.timeout, trust_env=False, cookies=cookies) as client:
+    with httpx.Client(
+        verify=request.verify, timeout=request.timeout, trust_env=False, cookies=cookies
+    ) as client:
         resp = client.request(
             request.method,
             url,
@@ -129,7 +135,9 @@ def execute(
 
     set_cookies: list[Cookie] = []
     for c in resp.cookies.jar:
-        set_cookies.append(Cookie(name=c.name, value=c.value, domain=c.domain, path=c.path))
+        set_cookies.append(
+            Cookie(name=c.name, value=c.value, domain=c.domain, path=c.path)
+        )
 
     response = Response(
         status_code=resp.status_code,
@@ -178,7 +186,7 @@ def send_and_record(
         error = str(exc)
     record = HistoryRecord(
         id=record_id,
-        ts=datetime.now(timezone.utc).isoformat(),
+        ts=datetime.now(UTC).isoformat(),
         request=request,
         response=response,
         error=error,
@@ -207,11 +215,11 @@ class _EngineError(Exception):
 
 
 __all__ = [
-    "execute",
-    "send_request",
-    "send_and_record",
-    "rebuild_url",
     "effective_cookies",
     "effective_headers",
+    "execute",
     "host_of",
+    "rebuild_url",
+    "send_and_record",
+    "send_request",
 ]

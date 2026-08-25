@@ -2,7 +2,7 @@ import json
 
 from darco.analyze import analyze_request, analyze_response
 from darco.diff import diff_responses, normalize_body
-from darco.models import BodyType, NameValue, Request, Response
+from darco.models import NameValue, Request, Response
 
 
 def _resp(status, body, headers=None):
@@ -42,8 +42,22 @@ def test_diff_normalizes_timestamps_and_hex():
 
 
 def test_diff_excludes_volatile_headers():
-    a = _resp(200, "x", headers=[NameValue(name="Date", value="Mon"), NameValue(name="Server", value="nginx")])
-    b = _resp(200, "x", headers=[NameValue(name="Date", value="Tue"), NameValue(name="Server", value="apache")])
+    a = _resp(
+        200,
+        "x",
+        headers=[
+            NameValue(name="Date", value="Mon"),
+            NameValue(name="Server", value="nginx"),
+        ],
+    )
+    b = _resp(
+        200,
+        "x",
+        headers=[
+            NameValue(name="Date", value="Tue"),
+            NameValue(name="Server", value="apache"),
+        ],
+    )
     d = diff_responses(a, b)
     names = [h["name"] for h in d["headers"]]
     assert "server" in names
@@ -54,7 +68,11 @@ def test_analyze_request_signals():
     req = Request(
         method="GET",
         url="http://t.test/admin/panel",
-        params=[NameValue(name="debug", value="true"), NameValue(name="enabled", value="1"), NameValue(name="otp", value="1234")],
+        params=[
+            NameValue(name="debug", value="true"),
+            NameValue(name="enabled", value="1"),
+            NameValue(name="otp", value="1234"),
+        ],
     )
     types = {f.type for f in analyze_request(req)}
     assert "interesting_param_name" in types
@@ -64,7 +82,9 @@ def test_analyze_request_signals():
 
 def test_analyze_response_error_leak():
     req = Request(method="GET", url="http://t.test/error")
-    resp = _resp(500, "Traceback (most recent call last):\n  File \"/app/x.py\", line 5, in f")
+    resp = _resp(
+        500, 'Traceback (most recent call last):\n  File "/app/x.py", line 5, in f'
+    )
     types = {f.type for f in analyze_response(req, resp)}
     assert "error_leak" in types
     assert "server_anomaly" in types
@@ -89,7 +109,11 @@ def test_analyze_response_captcha():
 
 
 def test_analyze_response_reflection_and_auth():
-    req = Request(method="GET", url="http://t.test/echo", params=[NameValue(name="q", value="reflected-here")])
+    req = Request(
+        method="GET",
+        url="http://t.test/echo",
+        params=[NameValue(name="q", value="reflected-here")],
+    )
     resp = _resp(200, "your input: reflected-here")
     assert any(f.type == "reflection" for f in analyze_response(req, resp))
     req2 = Request(method="GET", url="http://t.test/admin")

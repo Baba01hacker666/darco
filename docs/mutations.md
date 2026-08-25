@@ -13,8 +13,8 @@ Module: `darco/mutate.py`.
 ```python
 @dataclass
 class Mutation:
-    op: str          # set_header | unset_header | set_param | unset_param |
-                     # flip_param | strip_session | set_body
+    op: str  # set_header | unset_header | set_param | unset_param |
+    # flip_param | strip_session | set_body
     name: str = ""
     value: str = ""
     extra: dict = field(default_factory=dict)

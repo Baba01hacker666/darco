@@ -28,9 +28,9 @@ Example (darco.toml)::
     insecure = false
 """
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-import json
 
 from .errors import DarcoError
 from .models import NameValue
@@ -59,7 +59,7 @@ class DarcoConfig:
     insecure: bool = False
 
     @classmethod
-    def empty(cls) -> "DarcoConfig":
+    def empty(cls) -> DarcoConfig:
         return cls()
 
 
@@ -74,7 +74,9 @@ def _parse_headers(raw) -> list[NameValue]:
         for line in raw:
             name, sep, value = str(line).partition(":")
             if not sep:
-                raise DarcoError(f"invalid config header (expected 'Name: value'): {line!r}")
+                raise DarcoError(
+                    f"invalid config header (expected 'Name: value'): {line!r}"
+                )
             items.append((name.strip(), value.strip()))
     for name, value in items:
         out.append(NameValue(name=name, value=value))
@@ -119,7 +121,9 @@ def _read_file(path: Path) -> DarcoConfig:
 
             data = tomllib.loads(text)
         except ModuleNotFoundError:  # pragma: no cover - py<3.11
-            raise DarcoError("TOML config requires Python 3.11+; use darco.json instead")
+            raise DarcoError(
+                "TOML config requires Python 3.11+; use darco.json instead"
+            )
         except Exception as exc:  # tomllib.TOMLDecodeError in 3.11+
             raise DarcoError(f"invalid TOML config {path}: {exc}") from exc
     return from_dict(data)

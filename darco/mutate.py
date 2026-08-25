@@ -46,7 +46,9 @@ class Mutation:
 def flip_value(value: str) -> str:
     key = value.strip().lower()
     if key not in FLIP_MAP:
-        raise DarcoError(f"cannot flip value {value!r} (expected true/false, 1/0, yes/no, on/off)")
+        raise DarcoError(
+            f"cannot flip value {value!r} (expected true/false, 1/0, yes/no, on/off)"
+        )
     if value.strip() != value:
         return FLIP_MAP[key]
     if value.islower():
@@ -67,11 +69,19 @@ def mutations_from_dicts(items: list[dict]) -> list[Mutation]:
     for item in items:
         op = item.get("op")
         if op == "set_header":
-            ops.append(Mutation("set_header", name=item.get("name", ""), value=item.get("value", "")))
+            ops.append(
+                Mutation(
+                    "set_header", name=item.get("name", ""), value=item.get("value", "")
+                )
+            )
         elif op == "unset_header":
             ops.append(Mutation("unset_header", name=item.get("name", "")))
         elif op == "set_param":
-            ops.append(Mutation("set_param", name=item.get("name", ""), value=item.get("value", "")))
+            ops.append(
+                Mutation(
+                    "set_param", name=item.get("name", ""), value=item.get("value", "")
+                )
+            )
         elif op == "unset_param":
             ops.append(Mutation("unset_param", name=item.get("name", "")))
         elif op == "flip_param":
@@ -172,13 +182,17 @@ def apply_mutations(request: Request, ops: list[Mutation]) -> tuple[Request, lis
             descriptions.append(op.describe())
         elif op.op == "unset_param":
             req.params = [p for p in req.params if p.name.lower() != op.name.lower()]
-            req.body_form = [p for p in req.body_form if p.name.lower() != op.name.lower()]
+            req.body_form = [
+                p for p in req.body_form if p.name.lower() != op.name.lower()
+            ]
             descriptions.append(op.describe())
         elif op.op == "flip_param":
             p = find_param(op.name)
             form = find_form(op.name)
             if p is None and form is None:
-                raise DarcoError(f"cannot flip param {op.name!r}: not present in request")
+                raise DarcoError(
+                    f"cannot flip param {op.name!r}: not present in request"
+                )
             if p is not None:
                 p.value = flip_value(p.value)
             if form is not None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
 import httpx
@@ -13,6 +13,7 @@ from ..models import (
     Cookie,
     Endpoint,
     Finding,
+    Form,
     JsFile,
     NameValue,
     Request,
@@ -21,17 +22,29 @@ from ..models import (
 )
 from ..workspace import Workspace
 from .js_extractor import extract_js_endpoints
-from .parsers import extract_forms, extract_links, extract_meta_refresh, extract_scripts, is_html
+from .parsers import (
+    extract_forms,
+    extract_links,
+    extract_meta_refresh,
+    extract_scripts,
+    is_html,
+)
 
 _finding_counter = 0
 
 
-def _finding(f_type: str, location: str, evidence: str, suggestion: str, severity: str = "info") -> Finding:
+def _finding(
+    f_type: str, location: str, evidence: str, suggestion: str, severity: str = "info"
+) -> Finding:
     global _finding_counter
     _finding_counter += 1
     return Finding(
-        id=f"c{_finding_counter}", type=f_type, severity=severity,
-        location=location, evidence=evidence[:500], suggestion=suggestion,
+        id=f"c{_finding_counter}",
+        type=f_type,
+        severity=severity,
+        location=location,
+        evidence=evidence[:500],
+        suggestion=suggestion,
     )
 
 
@@ -50,7 +63,9 @@ def normalize_url(url: str, base: str | None = None) -> str | None:
     if not host:
         return None
     port = u.port
-    default_port = (u.scheme == "http" and port == 80) or (u.scheme == "https" and port == 443)
+    default_port = (u.scheme == "http" and port == 80) or (
+        u.scheme == "https" and port == 443
+    )
     netloc = host if (port is None or default_port) else f"{host}:{port}"
     return f"{u.scheme}://{netloc}{u.path or '/'}" + (f"?{u.query}" if u.query else "")
 
@@ -73,7 +88,7 @@ async def discover(
 ) -> SiteMap:
     """Crawl a target and build a SiteMap. Updates workspace session and findings."""
     session = workspace.load_session()
-    sitemap = SiteMap(target=start_url, crawled_at=datetime.now(timezone.utc).isoformat())
+    sitemap = SiteMap(target=start_url, crawled_at=datetime.now(UTC).isoformat())
     start = normalize_url(start_url)
     if not start:
         raise ValueError(f"invalid start URL: {start_url!r}")
@@ -93,7 +108,9 @@ async def discover(
         resolved = normalize_url(urljoin(start, r), start)
         if resolved and resolved not in endpoint_by_url:
             endpoint_by_url[resolved] = Endpoint(
-                url=resolved, methods=["GET"], source="robots",
+                url=resolved,
+                methods=["GET"],
+                source="robots",
                 notes=["path listed in robots.txt (Disallow); not crawled"],
             )
 
@@ -105,10 +122,12 @@ async def discover(
         await queue.put((start, 0))
 
     async with httpx.AsyncClient(
-        timeout=timeout, verify=verify, trust_env=False, follow_redirects=True,
+        timeout=timeout,
+        verify=verify,
+        trust_env=False,
+        follow_redirects=True,
         cookies=_to_httpx_cookies(session),
     ) as client:
-
         pending = 0
 
         async def worker() -> None:
@@ -116,7 +135,7 @@ async def discover(
             while True:
                 try:
                     url, d = await asyncio.wait_for(queue.get(), timeout=0.3)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     if pending == 0 and queue.empty():
                         return
                     continue
@@ -130,10 +149,23 @@ async def discover(
                     visited.add(url)
                     try:
                         await _process(
-                            client, start, url, d, endpoint_by_url, forms, js_files,
-                            signals, parse_js, timeout, verify, queue, visited, depth, max_urls,
+                            client,
+                            start,
+                            url,
+                            d,
+                            endpoint_by_url,
+                            forms,
+                            js_files,
+                            signals,
+                            parse_js,
+                            timeout,
+                            verify,
+                            queue,
+                            visited,
+                            depth,
+                            max_urls,
                         )
-                    except (httpx.HTTPError, asyncio.TimeoutError, OSError):
+                    except (TimeoutError, httpx.HTTPError, OSError):
                         errors += 1
                 finally:
                     pending -= 1
@@ -164,11 +196,15 @@ async def discover(
     return sitemap
 
 
-async def _load_seeds(start: str, timeout: float, verify: bool) -> tuple[list[str], list[str]]:
+async def _load_seeds(
+    start: str, timeout: float, verify: bool
+) -> tuple[list[str], list[str]]:
     robots: list[str] = []
     seed_urls: list[str] = []
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=verify, trust_env=False) as client:
+        async with httpx.AsyncClient(
+            timeout=timeout, verify=verify, trust_env=False
+        ) as client:
             for path, is_robots in (("/robots.txt", True), ("/sitemap.xml", False)):
                 try:
                     resp = await client.get(urljoin(start, path))
@@ -185,7 +221,9 @@ async def _load_seeds(start: str, timeout: float, verify: bool) -> tuple[list[st
                             if value and value != "/":
                                 robots.append(value)
                 else:
-                    for m in re.finditer(r"<loc>\s*(.+?)\s*</loc>", text, re.IGNORECASE):
+                    for m in re.finditer(
+                        r"<loc>\s*(.+?)\s*</loc>", text, re.IGNORECASE
+                    ):
                         seed_urls.append(m.group(1).strip())
     except httpx.HTTPError:
         pass
@@ -209,19 +247,33 @@ async def _process(
     depth: int,
     max_urls: int,
 ) -> None:
-    resp = await client.get(url, headers={"User-Agent": "darco/0.1 (pentest assistant)"})
+    resp = await client.get(
+        url, headers={"User-Agent": "darco/0.1 (pentest assistant)"}
+    )
     base = str(resp.url)
     content_type = resp.headers.get("content-type", "")
 
     key = _endpoint_key(url)
-    endpoint = endpoint_by_url.setdefault(key, Endpoint(url=key, methods=["GET"], source="seed" if d == 0 else "link"))
+    endpoint = endpoint_by_url.setdefault(
+        key, Endpoint(url=key, methods=["GET"], source="seed" if d == 0 else "link")
+    )
     endpoint.status = resp.status_code
     endpoint.content_type = content_type.split(";")[0] or None
     redirects = [str(r.url) for r in resp.history]
-    if resp.status_code in (401, 403) or any("login" in r.lower() or "signin" in r.lower() for r in redirects):
+    if resp.status_code in (401, 403) or any(
+        "login" in r.lower() or "signin" in r.lower() for r in redirects
+    ):
         endpoint.auth_required = True
     if resp.status_code == 429:
-        signals.append(_finding("rate_limited", url, "status 429 during crawl", "Site rate-limits crawling; slow down or use delays.", "medium"))
+        signals.append(
+            _finding(
+                "rate_limited",
+                url,
+                "status 429 during crawl",
+                "Site rate-limits crawling; slow down or use delays.",
+                "medium",
+            )
+        )
 
     body = resp.text
     if is_html(content_type, body):
@@ -238,7 +290,9 @@ async def _process(
             action = normalize_url(form.action, base)
             if action and same_origin(start, action):
                 action = _endpoint_key(action)
-                ep = endpoint_by_url.setdefault(action, Endpoint(url=action, methods=[], source="form"))
+                ep = endpoint_by_url.setdefault(
+                    action, Endpoint(url=action, methods=[], source="form")
+                )
                 if form.method not in ep.methods:
                     ep.methods.append(form.method)
                 for inp in form.inputs:
@@ -255,7 +309,9 @@ async def _process(
                     except httpx.HTTPError:
                         continue
                     js_endpoints = extract_js_endpoints(js_resp.text, normalized)
-                    js_files[normalized] = JsFile(url=normalized, endpoints=js_endpoints)
+                    js_files[normalized] = JsFile(
+                        url=normalized, endpoints=js_endpoints
+                    )
                     for js_ep in js_endpoints:
                         resolved = normalize_url(js_ep, normalized)
                         if resolved and same_origin(start, resolved):
@@ -267,20 +323,38 @@ async def _process(
                 if child not in visited:
                     await queue.put((child, d + 1))
 
-    for f in analyze_response(Request(method="GET", url=url, source="crawl"), _response_from_httpx(resp)):
+    for f in analyze_response(
+        Request(method="GET", url=url, source="crawl"), _response_from_httpx(resp)
+    ):
         signals.append(_finding(f.type, url, f.evidence, f.suggestion, f.severity))
     path = urlsplit(url).path
-    if re.search(r"/(admin|internal|debug|backup|api/v\d?|swagger|docs|env|\.git|config|test|dev|console|actuator)(/|$|\.|_)", path, re.IGNORECASE):
-        signals.append(_finding("interesting_path", url, f"path matches sensitive heuristic: {path}", "Verify access controls and whether this exposes internal functionality.", "medium"))
+    if re.search(
+        r"/(admin|internal|debug|backup|api/v\d?|swagger|docs|env|\.git|config|test|dev|console|actuator)(/|$|\.|_)",
+        path,
+        re.IGNORECASE,
+    ):
+        signals.append(
+            _finding(
+                "interesting_path",
+                url,
+                f"path matches sensitive heuristic: {path}",
+                "Verify access controls and whether this exposes internal functionality.",
+                "medium",
+            )
+        )
 
 
 def _endpoint_key(url: str) -> str:
     return url.split("?", 1)[0]
 
 
-def _record_endpoint(normalized: str, endpoint_by_url: dict[str, Endpoint], *, source: str) -> None:
+def _record_endpoint(
+    normalized: str, endpoint_by_url: dict[str, Endpoint], *, source: str
+) -> None:
     key = _endpoint_key(normalized)
-    ep = endpoint_by_url.setdefault(key, Endpoint(url=key, methods=["GET"], source=source))
+    ep = endpoint_by_url.setdefault(
+        key, Endpoint(url=key, methods=["GET"], source=source)
+    )
     if "GET" not in ep.methods:
         ep.methods.append("GET")
     for k, v in parse_qsl(urlsplit(normalized).query, keep_blank_values=True):
@@ -289,7 +363,10 @@ def _record_endpoint(normalized: str, endpoint_by_url: dict[str, Endpoint], *, s
 
 
 def _response_from_httpx(resp: httpx.Response) -> Response:
-    set_cookies = [Cookie(name=c.name, value=c.value, domain=c.domain, path=c.path) for c in resp.cookies.jar]
+    set_cookies = [
+        Cookie(name=c.name, value=c.value, domain=c.domain, path=c.path)
+        for c in resp.cookies.jar
+    ]
     return Response(
         status_code=resp.status_code,
         reason=resp.reason_phrase or "",

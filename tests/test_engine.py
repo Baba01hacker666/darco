@@ -14,7 +14,9 @@ def _form(path, app, fields):
 
 def test_basic_get_recorded(app, workspace):
     session = workspace.load_session()
-    rec, session = send_and_record(workspace, Request(method="GET", url=f"{app}/"), session)
+    rec, session = send_and_record(
+        workspace, Request(method="GET", url=f"{app}/"), session
+    )
     assert rec.id == "0001"
     assert rec.response.status_code == 200
     assert "login" in rec.response.body
@@ -33,9 +35,13 @@ def test_login_captures_session_cookie(app, workspace):
 
 def test_csrf_header_capture_and_replay(app, workspace):
     session = workspace.load_session()
-    rec, session = send_and_record(workspace, Request(method="GET", url=f"{app}/csrf"), session)
+    _rec, session = send_and_record(
+        workspace, Request(method="GET", url=f"{app}/csrf"), session
+    )
     assert session.csrf_headers.get("127.0.0.1", [])
-    rec2, session = send_and_record(workspace, Request(method="GET", url=f"{app}/echo"), session)
+    rec2, session = send_and_record(
+        workspace, Request(method="GET", url=f"{app}/echo"), session
+    )
     body = rec2.response.body
     assert "tok123" in body
     assert "csrf" in body.lower()
@@ -85,7 +91,10 @@ def test_multi_value_form_body_preserved(app, workspace):
         method="POST",
         url=f"{app}/echo",
         body_type=BodyType.FORM,
-        body_form=[NameValue(name="tag", value="sec"), NameValue(name="tag", value="dev")],
+        body_form=[
+            NameValue(name="tag", value="sec"),
+            NameValue(name="tag", value="dev"),
+        ],
         follow_redirects=False,
     )
     rec, _ = send_and_record(workspace, req, session)
@@ -95,6 +104,10 @@ def test_multi_value_form_body_preserved(app, workspace):
 
 def test_query_params_rebuilt(app, workspace):
     session = workspace.load_session()
-    req = Request(method="GET", url=f"{app}/debug", params=[NameValue(name="enabled", value="true")])
+    req = Request(
+        method="GET",
+        url=f"{app}/debug",
+        params=[NameValue(name="enabled", value="true")],
+    )
     rec, _ = send_and_record(workspace, req, session)
     assert "SECRET=super-secret-value" in rec.response.body

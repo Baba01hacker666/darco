@@ -8,7 +8,7 @@ one or the other based on `--format`. This module owns the markdown builders so
 `cli.py` stays focused on wiring.
 """
 
-from .models import Finding, to_json
+from .models import Finding
 
 
 def _kv(rows: list[tuple[str, str]]) -> str:
@@ -16,7 +16,10 @@ def _kv(rows: list[tuple[str, str]]) -> str:
 
 
 def _md_request(req: dict) -> str:
-    lines = [f"- **method**: `{req.get('method', 'GET')}`", f"- **url**: {req.get('url', '')}"]
+    lines = [
+        f"- **method**: `{req.get('method', 'GET')}`",
+        f"- **url**: {req.get('url', '')}",
+    ]
     if req.get("params"):
         params = ", ".join(f"`{p['name']}={p['value']}`" for p in req["params"])
         lines.append(f"- **params**: {params}")
@@ -27,7 +30,9 @@ def _md_request(req: dict) -> str:
     if bt and bt != "none":
         lines.append(f"- **body_type**: `{bt}`")
     if req.get("mutations"):
-        lines.append("- **mutations**: " + " → ".join(f"`{m}`" for m in req["mutations"]))
+        lines.append(
+            "- **mutations**: " + " → ".join(f"`{m}`" for m in req["mutations"])
+        )
     if req.get("parent_id"):
         lines.append(f"- **parent**: {req['parent_id']}")
     return "\n".join(lines)
@@ -44,11 +49,13 @@ def _md_finding(f: Finding) -> str:
 
 
 def md_init(d: dict) -> str:
-    return "# Workspace created\n\n" + _kv([
-        ("status", str(d.get("status"))),
-        ("workspace", str(d.get("workspace"))),
-        ("target", str(d.get("target"))),
-    ])
+    return "# Workspace created\n\n" + _kv(
+        [
+            ("status", str(d.get("status"))),
+            ("workspace", str(d.get("workspace"))),
+            ("target", str(d.get("target"))),
+        ]
+    )
 
 
 def md_store(d: dict) -> str:
@@ -59,10 +66,57 @@ def md_store(d: dict) -> str:
 
 
 def md_send(d: dict) -> str:
-    lines = [f"# Sent → `{d.get('id')}`", "", _md_request(d["request"]), ""]
+    rid = d.get("id")
     resp = d.get("response") or {}
-    lines.append(f"**response**: `{resp.get('status_code')}` "
-                 f"({resp.get('body_len', 0)} bytes, {resp.get('elapsed_ms', 0)} ms)")
+    req = d.get("request") or {}
+    status_code = resp.get("status_code", "")
+    reason = resp.get("reason", "")
+
+    if rid:
+        header = f"# Sent → `{rid}`"
+    else:
+        header = "# Sent"
+
+    lines = [header, "", _md_request(req), ""]
+    if resp:
+        body_len = resp.get("body_len", 0)
+        elapsed_ms = resp.get("elapsed_ms", 0)
+        status_str = (
+            f"`{status_code} {reason}`".strip() if reason else f"`{status_code}`"
+        )
+        lines.append(f"**response**: {status_str} ({body_len} bytes, {elapsed_ms} ms)")
+        resp_headers = resp.get("headers") or []
+        notable = [
+            h
+            for h in resp_headers
+            if h.get("name", "").lower()
+            in {
+                "content-type",
+                "server",
+                "set-cookie",
+                "location",
+                "retry-after",
+                "www-authenticate",
+            }
+        ]
+        if notable:
+            lines.append(
+                "- **response headers**: "
+                + ", ".join(f"`{h['name']}: {h['value']}`" for h in notable)
+            )
+        body = resp.get("body", "")
+        if body:
+            body_lines = body.splitlines()
+            preview = "\n".join(body_lines[:15])
+            if len(body_lines) > 15:
+                preview += f"\n... [{len(body_lines) - 15} more lines]"
+            lines.append("")
+            lines.append("```")
+            lines.append(preview)
+            lines.append("```")
+    elif d.get("error"):
+        lines.append(f"**error**: `{d.get('error')}`")
+
     if d.get("diff"):
         lines.append("")
         lines.append(md_diff(d["diff"]))
@@ -75,8 +129,10 @@ def md_send(d: dict) -> str:
 def md_diff(d: dict) -> str:
     lines = ["## Diff", ""]
     st = d.get("status", {})
-    lines.append(f"- **status**: `{st.get('a')}` → `{st.get('b')}`"
-                 + ("  _changed_" if st.get("changed") else "  _same_"))
+    lines.append(
+        f"- **status**: `{st.get('a')}` → `{st.get('b')}`"
+        + ("  _changed_" if st.get("changed") else "  _same_")
+    )
     hd = d.get("headers") or []
     if hd:
         lines.append("- **headers**:")
@@ -89,7 +145,9 @@ def md_diff(d: dict) -> str:
             lines.append(f"  - `{c}`")
     else:
         if body.get("added_lines"):
-            lines.append(f"  - +{body['added_lines']} / -{body.get('removed_lines', 0)} lines")
+            lines.append(
+                f"  - +{body['added_lines']} / -{body.get('removed_lines', 0)} lines"
+            )
     return "\n".join(lines)
 
 
@@ -106,24 +164,36 @@ def md_analyze(d: dict) -> str:
 
 
 def md_status(d: dict) -> str:
-    cookies = ", ".join(f"`{c['name']}@{c.get('domain') or '*'}`" for c in d.get("cookies", [])) or "_none_"
-    return "# Workspace status\n\n" + _kv([
-        ("path", str(d.get("path"))),
-        ("target", str(d.get("target"))),
-        ("history", str(d.get("history_count"))),
-        ("cookies", cookies),
-        ("csrf hosts", ", ".join(f"`{h}`" for h in d.get("csrf_hosts", [])) or "_none_"),
-        ("findings", str(d.get("findings_count"))),
-        ("sitemap", "yes" if d.get("sitemap") else "no"),
-    ])
+    cookies = (
+        ", ".join(
+            f"`{c['name']}@{c.get('domain') or '*'}`" for c in d.get("cookies", [])
+        )
+        or "_none_"
+    )
+    return "# Workspace status\n\n" + _kv(
+        [
+            ("path", str(d.get("path"))),
+            ("target", str(d.get("target"))),
+            ("history", str(d.get("history_count"))),
+            ("cookies", cookies),
+            (
+                "csrf hosts",
+                ", ".join(f"`{h}`" for h in d.get("csrf_hosts", [])) or "_none_",
+            ),
+            ("findings", str(d.get("findings_count"))),
+            ("sitemap", "yes" if d.get("sitemap") else "no"),
+        ]
+    )
 
 
 def md_session(d: dict) -> str:
     cookies = d.get("cookies") or []
     lines = ["# Session", "", f"- **cookies**: {len(cookies)}"]
     for c in cookies:
-        lines.append(f"  - `{c['name']}` = `{c.get('value', '')[:40]}`"
-                     + (f"  (domain={c.get('domain')})" if c.get("domain") else ""))
+        lines.append(
+            f"  - `{c['name']}` = `{c.get('value', '')[:40]}`"
+            + (f"  (domain={c.get('domain')})" if c.get("domain") else "")
+        )
     csrf = d.get("csrf_headers") or {}
     lines.append(f"- **csrf headers**: {len(csrf)} host(s)")
     for host, hs in csrf.items():
@@ -133,12 +203,16 @@ def md_session(d: dict) -> str:
 
 
 def md_repeat(d: dict) -> str:
-    lines = ["# Repeat", "",
-             f"- **from**: `{d.get('from')}`  **count**: `{d.get('count')}`",
-             f"- **ids**: " + ", ".join(f"`{i}`" for i in d.get("ids", [])),
-             f"- **statuses**: " + ", ".join(f"`{s}`" for s in d.get("statuses", [])),
-             f"- **distinct**: " + ", ".join(f"`{s}`" for s in d.get("distinct_statuses", [])),
-             f"- **errors**: `{d.get('errors', 0)}`"]
+    lines = [
+        "# Repeat",
+        "",
+        f"- **from**: `{d.get('from')}`  **count**: `{d.get('count')}`",
+        "- **ids**: " + ", ".join(f"`{i}`" for i in d.get("ids", [])),
+        "- **statuses**: " + ", ".join(f"`{s}`" for s in d.get("statuses", [])),
+        "- **distinct**: "
+        + ", ".join(f"`{s}`" for s in d.get("distinct_statuses", [])),
+        f"- **errors**: `{d.get('errors', 0)}`",
+    ]
     return "\n".join(lines)
 
 
@@ -157,16 +231,23 @@ def md_findings_list(d: dict) -> str:
 
 def md_discover(sitemap: dict) -> str:
     stats = sitemap.get("stats", {})
-    lines = ["# Discovery report", "",
-             "**stats**", _kv([
-                 ("visited", str(stats.get("visited", 0))),
-                 ("endpoints", str(stats.get("endpoints", 0))),
-                 ("forms", str(stats.get("forms", 0))),
-                 ("js_files", str(stats.get("js_files", 0))),
-                 ("signals", str(stats.get("signals", 0))),
-                 ("errors", str(stats.get("errors", 0))),
-                 ("max_urls_reached", str(stats.get("max_urls_reached", False))),
-             ]), ""]
+    lines = [
+        "# Discovery report",
+        "",
+        "**stats**",
+        _kv(
+            [
+                ("visited", str(stats.get("visited", 0))),
+                ("endpoints", str(stats.get("endpoints", 0))),
+                ("forms", str(stats.get("forms", 0))),
+                ("js_files", str(stats.get("js_files", 0))),
+                ("signals", str(stats.get("signals", 0))),
+                ("errors", str(stats.get("errors", 0))),
+                ("max_urls_reached", str(stats.get("max_urls_reached", False))),
+            ]
+        ),
+        "",
+    ]
     endpoints = sitemap.get("endpoints") or []
     if endpoints:
         lines.append(f"## Endpoints ({len(endpoints)})")
@@ -176,8 +257,10 @@ def md_discover(sitemap: dict) -> str:
         for e in endpoints[:50]:
             methods = ",".join(e.get("methods", [])) or "GET"
             auth = "yes" if e.get("auth_required") else "—"
-            lines.append(f"| {methods} | `{e.get('url')}` | {e.get('status') or '?'} "
-                         f"| {e.get('source')} | {auth} |")
+            lines.append(
+                f"| {methods} | `{e.get('url')}` | {e.get('status') or '?'} "
+                f"| {e.get('source')} | {auth} |"
+            )
         lines.append("")
     signals = sitemap.get("signals") or []
     if signals:
@@ -195,8 +278,10 @@ def md_record(record: dict) -> str:
     if record.get("response"):
         resp = record["response"]
         lines.append("")
-        lines.append(f"**response**: `{resp.get('status_code')}` "
-                     f"({resp.get('body_len', 0)} bytes)")
+        lines.append(
+            f"**response**: `{resp.get('status_code')}` "
+            f"({resp.get('body_len', 0)} bytes)"
+        )
     elif record.get("error"):
         lines.append("")
         lines.append(f"**error**: `{record['error']}`")

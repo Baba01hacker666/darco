@@ -8,7 +8,9 @@ from darco.models import BodyType
 
 
 def test_curl_basic_get():
-    req = parse_curl('curl -s "https://example.com/api?foo=bar" -H "X-Api-Key: secret" -A "test-agent"')
+    req = parse_curl(
+        'curl -s "https://example.com/api?foo=bar" -H "X-Api-Key: secret" -A "test-agent"'
+    )
     assert req.method == "GET"
     assert req.url == "https://example.com/api"
     assert [(p.name, p.value) for p in req.params] == [("foo", "bar")]
@@ -27,14 +29,18 @@ def test_curl_form_data_and_method():
 
 
 def test_curl_data_json():
-    req = parse_curl('curl -X POST http://h/api --data-json \'{"a": 1}\'')
+    req = parse_curl("curl -X POST http://h/api --data-json '{\"a\": 1}'")
     assert req.body_type == BodyType.JSON
     assert req.body_json == {"a": 1}
-    assert any(h.name.lower() == "content-type" and "json" in h.value for h in req.headers)
+    assert any(
+        h.name.lower() == "content-type" and "json" in h.value for h in req.headers
+    )
 
 
 def test_curl_data_urlencode():
-    req = parse_curl("curl -X POST http://h/x --data-urlencode 'name=hello world' --data-urlencode bare")
+    req = parse_curl(
+        "curl -X POST http://h/x --data-urlencode 'name=hello world' --data-urlencode bare"
+    )
     pairs = {(p.name, p.value) for p in req.body_form}
     assert ("name", "hello world") in pairs
     assert ("bare", "bare") in pairs
@@ -98,7 +104,7 @@ def test_curl_implicit_post_method():
     assert req.method == "POST"
     assert req.body_type == BodyType.FORM
 
-    req_json = parse_curl('curl http://h/api --data-json \'{"k": 1}\'')
+    req_json = parse_curl("curl http://h/api --data-json '{\"k\": 1}'")
     assert req_json.method == "POST"
 
     req_form = parse_curl("curl http://h/upload -F file=data")
@@ -113,7 +119,9 @@ def test_raw_no_trailing_newline():
 
 
 def test_raw_multiple_cookie_headers():
-    text = "GET / HTTP/1.1\r\nHost: t.test\r\nCookie: sid=1\r\nCookie: theme=dark\r\n\r\n"
+    text = (
+        "GET / HTTP/1.1\r\nHost: t.test\r\nCookie: sid=1\r\nCookie: theme=dark\r\n\r\n"
+    )
     req = parse_raw_http(text)
     cookie_dict = {c.name: c.value for c in req.cookies}
     assert cookie_dict == {"sid": "1", "theme": "dark"}
@@ -135,10 +143,15 @@ def test_har_parsing():
                     "request": {
                         "method": "POST",
                         "url": "https://x.test/api?q=1",
-                        "headers": [{"name": "Content-Type", "value": "application/json"}],
+                        "headers": [
+                            {"name": "Content-Type", "value": "application/json"}
+                        ],
                         "queryString": [{"name": "q", "value": "1"}],
                         "cookies": [{"name": "sid", "value": "v"}],
-                        "postData": {"mimeType": "application/json", "text": '{"k": 2}'},
+                        "postData": {
+                            "mimeType": "application/json",
+                            "text": '{"k": 2}',
+                        },
                     }
                 }
             ]

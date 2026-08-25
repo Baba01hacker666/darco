@@ -60,12 +60,13 @@ def diff_responses(a: Response, b: Response) -> dict:
     for name in sorted(set(headers_a) | set(headers_b)):
         va, vb = headers_a.get(name), headers_b.get(name)
         if va != vb:
-            header_diffs.append({"name": name, "a": ", ".join(va or []), "b": ", ".join(vb or [])})
+            header_diffs.append(
+                {"name": name, "a": ", ".join(va or []), "b": ", ".join(vb or [])}
+            )
 
     body_changed = normalize_body(a.body) != normalize_body(b.body)
     body_section: dict = {"changed": body_changed}
     json_changes: list[str] | None = None
-    hunks: list[str] | None = None
     try:
         ja = json.loads(a.body)
         jb = json.loads(b.body)
@@ -76,11 +77,17 @@ def diff_responses(a: Response, b: Response) -> dict:
             difflib.unified_diff(
                 normalize_body(a.body).splitlines(),
                 normalize_body(b.body).splitlines(),
-                fromfile="a", tofile="b", lineterm="",
+                fromfile="a",
+                tofile="b",
+                lineterm="",
             )
         )
-        added = sum(1 for ln in diff_lines if ln.startswith("+") and not ln.startswith("+++"))
-        removed = sum(1 for ln in diff_lines if ln.startswith("-") and not ln.startswith("---"))
+        added = sum(
+            1 for ln in diff_lines if ln.startswith("+") and not ln.startswith("+++")
+        )
+        removed = sum(
+            1 for ln in diff_lines if ln.startswith("-") and not ln.startswith("---")
+        )
         body_section["json"] = False
         body_section["added_lines"] = added
         body_section["removed_lines"] = removed

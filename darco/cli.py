@@ -4,17 +4,18 @@ import asyncio
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import parse_qsl, urlsplit, urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import click
 
 from . import __version__
+from .configfile import DarcoConfig
+from .configfile import load as load_config
 from .errors import DarcoError
 from .models import BodyType, HistoryRecord, NameValue, Request, SessionState, to_json
-from .workspace import Workspace
-from .configfile import load as load_config, DarcoConfig
+from .workspace import Workspace, default_workspace_name
 
 # Default output format for human-facing commands. Agents/tests pass
 # `--format json` (or `-J`) to get the machine contract.
@@ -22,8 +23,17 @@ DEFAULT_FMT = "md"
 
 # Commands that emit structured output and respect --format.
 _FORMAT_CMDS = {
-    "init", "ingest", "send", "diff", "analyze", "status", "session",
-    "export", "repeat", "findings", "discover",
+    "init",
+    "ingest",
+    "send",
+    "diff",
+    "analyze",
+    "status",
+    "session",
+    "export",
+    "repeat",
+    "findings",
+    "discover",
 }
 
 
@@ -52,29 +62,69 @@ def _table_from_json(data: dict) -> str:
 
 
 # ------------------------------------------------------------------ workspace resolution
-def _find_workspace(ctx, require: bool = True) -> Workspace | None:
+def _find_workspace(
+    ctx, require: bool = True, auto_create_target: str | None = None
+) -> Workspace | None:
     ws_path = (ctx.obj or {}).get("workspace_path")
     if ws_path:
         return Workspace.open(Path(ws_path))
-    candidates = [p for p in Path.cwd().iterdir() if p.is_dir() and p.name.endswith(".darco")]
+    candidates = [
+        p for p in Path.cwd().iterdir() if p.is_dir() and p.name.endswith(".darco")
+    ]
     if len(candidates) == 1:
         return Workspace.open(candidates[0])
+    if len(candidates) > 1:
+        if auto_create_target:
+            def_name = default_workspace_name(auto_create_target)
+            match = [p for p in candidates if p.name == def_name]
+            if match:
+                return Workspace.open(match[0])
+        raise DarcoError(
+            f"multiple workspaces found ({', '.join(p.name for p in candidates)}); pass --workspace"
+        )
+
+    # Search parent directories (up to 3 levels)
+    try:
+        curr = Path.cwd().parent
+        for _ in range(3):
+            if curr == curr.parent:
+                break
+            p_candidates = [
+                p for p in curr.iterdir() if p.is_dir() and p.name.endswith(".darco")
+            ]
+            if len(p_candidates) == 1:
+                return Workspace.open(p_candidates[0])
+            curr = curr.parent
+    except OSError:
+        pass
+
+    cfg = (ctx.obj or {}).get("config")
+    target = auto_create_target or (cfg.target if cfg else None)
+    if target:
+        ws_name = default_workspace_name(target)
+        ws_dir = Path.cwd() / ws_name
+        if ws_dir.exists() and (ws_dir / "workspace.json").exists():
+            return Workspace.open(ws_dir)
+        return Workspace.create(target, ws_dir)
+
     if require:
-        if not candidates:
-            raise DarcoError("no workspace found; run 'darco init <target>' or pass --workspace (or use -u for one-shot mode)")
-        raise DarcoError(f"multiple workspaces found ({', '.join(p.name for p in candidates)}); pass --workspace")
+        raise DarcoError(
+            "no workspace found; use 'darco -u <url>' for one-shot mode or 'darco init <target>' to create a workspace"
+        )
     return None
 
 
 def _one_shot_session() -> SessionState:
     """A throwaway session for one-shot (-u) commands: nothing persisted."""
-    return SessionState(updated_at=datetime.now(timezone.utc).isoformat())
+    return SessionState(updated_at=datetime.now(UTC).isoformat())
 
 
 # ------------------------------------------------------------------ raw serialization helpers
 def _request_body_bytes(req: Request) -> bytes:
     if req.body_type == BodyType.JSON:
-        return (json.dumps(req.body_json) if req.body_json is not None else "").encode("utf-8")
+        return (json.dumps(req.body_json) if req.body_json is not None else "").encode(
+            "utf-8"
+        )
     if req.body_type == BodyType.FORM:
         return urlencode([(p.name, p.value) for p in req.body_form]).encode("utf-8")
     if req.body_type == BodyType.RAW:
@@ -108,15 +158,79 @@ def _raw_response(resp) -> str:
     return "\r\n".join(lines)
 
 
+class DarcoCLI(click.Group):
+    """Custom Click Group that allows running URLs and history IDs directly (e.g. `darco https://target.com`)."""
+
+    def resolve_command(self, ctx, args):
+        cmd_name = args[0] if args else None
+        if (
+            cmd_name
+            and cmd_name not in self.commands
+            and not cmd_name.startswith("-")
+            and (
+                cmd_name.isdigit()
+                or cmd_name.startswith(("http://", "https://", "localhost"))
+                or "." in cmd_name
+                or "/" in cmd_name
+            )
+        ):
+            return "send", self.get_command(ctx, "send"), args
+        return super().resolve_command(ctx, args)
+
+
 # ------------------------------------------------------------------ root
-@click.group()
-@click.option("--workspace", "-w", type=click.Path(), default=None, help="Workspace dir (auto-detected if omitted)")
-@click.option("--config", "config_path", default=None, help="Config file (darco.toml / darco.json); auto-discovered if omitted")
-@click.option("--format", "format", type=click.Choice(["json", "md", "table"]), default=DEFAULT_FMT,
-              help="Output format (default: md)")
-@click.option("-J", "--json", "as_json", is_flag=True, help="Shorthand for --format json (agent contract)")
+@click.group(cls=DarcoCLI, invoke_without_command=True)
+@click.option(
+    "-u", "--url", "url", default=None, help="Target URL to send/inspect directly"
+)
+@click.option("-X", "--method", default=None, help="HTTP method (GET, POST, etc.)")
+@click.option("-d", "--data", default=None, help="Request body (prefix @file to read)")
+@click.option("-H", "--header", "cli_header", multiple=True, help="Header NAME:VALUE")
+@click.option("-F", "--form", "cli_form", multiple=True, help="Form field NAME=VALUE")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(),
+    default=None,
+    help="Workspace dir (auto-detected if omitted)",
+)
+@click.option(
+    "--config",
+    "config_path",
+    default=None,
+    help="Config file (darco.toml / darco.json); auto-discovered if omitted",
+)
+@click.option(
+    "--format",
+    "format",
+    type=click.Choice(["json", "md", "table"]),
+    default=DEFAULT_FMT,
+    help="Output format (default: md)",
+)
+@click.option(
+    "-J",
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Shorthand for --format json (agent contract)",
+)
+@click.option("--fuzz", "do_fuzz", is_flag=True, help="Auto-fuzz the target request")
+@click.option("--raw", is_flag=True, help="Print raw HTTP response")
 @click.pass_context
-def cli(ctx, workspace, config_path, format, as_json):
+def cli(
+    ctx,
+    url,
+    method,
+    data,
+    cli_header,
+    cli_form,
+    workspace,
+    config_path,
+    format,
+    as_json,
+    do_fuzz,
+    raw,
+):
     ctx.ensure_object(dict)
     ctx.obj["workspace_path"] = workspace
     ctx.obj["format"] = "json" if as_json else format
@@ -126,6 +240,21 @@ def cli(ctx, workspace, config_path, format, as_json):
         ctx.obj["format"] = cfg.format
     ctx.obj["config"] = cfg
 
+    if ctx.invoked_subcommand is None:
+        if url:
+            ctx.invoke(
+                send_cmd,
+                target=url,
+                method=method,
+                data=data,
+                cli_header=cli_header,
+                cli_form=cli_form,
+                do_fuzz=do_fuzz,
+                raw=raw,
+            )
+        else:
+            click.echo(ctx.get_help())
+
 
 @cli.command("version")
 def version_cmd():
@@ -134,17 +263,50 @@ def version_cmd():
 
 # ------------------------------------------------------------------ init
 @cli.command("init")
-@click.argument("target")
-@click.option("--dir", "dirpath", type=click.Path(), default=None, help="Workspace directory (default: <host>.darco)")
-@click.option("-H", "--header", multiple=True, help="Base header to apply to every request (NAME: value)")
-@click.option("--cookie", default=None, help="Base cookie header value (name=value; ...)")
-@click.option("--no-follow-redirects", is_flag=True, help="Do not follow redirects by default")
+@click.argument("target_arg", required=False, default=None)
+@click.option(
+    "-u", "--url", "target_opt", default=None, help="Target URL (default: argument)"
+)
+@click.option(
+    "--dir",
+    "dirpath",
+    type=click.Path(),
+    default=None,
+    help="Workspace directory (default: <host>.darco)",
+)
+@click.option(
+    "-H",
+    "--header",
+    multiple=True,
+    help="Base header to apply to every request (NAME: value)",
+)
+@click.option(
+    "--cookie", default=None, help="Base cookie header value (name=value; ...)"
+)
+@click.option(
+    "--no-follow-redirects", is_flag=True, help="Do not follow redirects by default"
+)
 @click.option("--timeout", type=float, default=10.0, help="Request timeout in seconds")
 @click.option("--insecure", is_flag=True, help="Disable TLS verification by default")
 @click.pass_context
-def init_cmd(ctx, target, dirpath, header, cookie, no_follow_redirects, timeout, insecure):
+def init_cmd(
+    ctx,
+    target_arg,
+    target_opt,
+    dirpath,
+    header,
+    cookie,
+    no_follow_redirects,
+    timeout,
+    insecure,
+):
     from .render import md_init
 
+    target = target_opt or target_arg
+    if not target:
+        raise DarcoError(
+            "provide a target URL: 'darco init <target>' or 'darco init -u <target>'"
+        )
     base_headers: list[NameValue] = []
     for h in header:
         name, sep, value = h.partition(":")
@@ -161,7 +323,9 @@ def init_cmd(ctx, target, dirpath, header, cookie, no_follow_redirects, timeout,
         timeout=timeout,
         insecure=insecure,
     )
-    _emit(ctx, {"status": "created", "workspace": str(ws.path), "target": target}, md_init)
+    _emit(
+        ctx, {"status": "created", "workspace": str(ws.path), "target": target}, md_init
+    )
 
 
 # ------------------------------------------------------------------ ingest
@@ -175,7 +339,7 @@ def _store_parsed(ws: Workspace, request: Request, dry_run: bool) -> dict:
         return {"request": to_json(request)}
     record = HistoryRecord(
         id=ws.next_id(),
-        ts=datetime.now(timezone.utc).isoformat(),
+        ts=datetime.now(UTC).isoformat(),
         request=request,
     )
     ws.add_history(record)
@@ -197,7 +361,11 @@ def ingest_curl(ctx, command, dry_run):
 
 @ingest_group.command("raw")
 @click.argument("file", type=click.Path(), default="-")
-@click.option("--scheme", default=None, help="Scheme when the request target is relative (http/https)")
+@click.option(
+    "--scheme",
+    default=None,
+    help="Scheme when the request target is relative (http/https)",
+)
 @click.option("--dry-run", is_flag=True)
 @click.pass_context
 def ingest_raw(ctx, file, scheme, dry_run):
@@ -229,46 +397,121 @@ def ingest_har(ctx, file, dry_run):
 
 # ------------------------------------------------------------------ send (+ on-the-fly -u mode)
 @cli.command("send")
+@click.argument("target", required=False, default=None)
+@click.option(
+    "-u",
+    "--url",
+    default=None,
+    help="ONE-SHOT: send directly to this URL (no workspace needed)",
+)
 @click.option("--from", "from_id", default=None, help="Base request: history record id")
-@click.option("--curl", "curl_cmd", default=None, help="Base request: curl command string")
-@click.option("--raw-file", type=click.Path(exists=True), default=None, help="Base request: raw HTTP request file")
-@click.option("-u", "--url", default=None, help="ONE-SHOT: send directly to this URL (no workspace needed)")
-@click.option("-X", "--method", default=None, help="ONE-SHOT method (with -u)")
-@click.option("--data", default=None, help="ONE-SHOT body (with -u); prefix @file to read")
-@click.option("--header", "cli_header", multiple=True, help="ONE-SHOT header NAME:VALUE (with -u)")
+@click.option(
+    "--curl", "curl_cmd", default=None, help="Base request: curl command string"
+)
+@click.option(
+    "--raw-file",
+    type=click.Path(exists=True),
+    default=None,
+    help="Base request: raw HTTP request file",
+)
+@click.option("-X", "--method", default=None, help="HTTP method (GET, POST, etc.)")
+@click.option("-d", "--data", default=None, help="Body (prefix @file to read)")
+@click.option("-H", "--header", "cli_header", multiple=True, help="Header NAME:VALUE")
+@click.option("-F", "--form", "cli_form", multiple=True, help="Form field NAME=VALUE")
 @click.option("--set-header", multiple=True)
 @click.option("--unset-header", multiple=True)
 @click.option("--set-param", multiple=True)
 @click.option("--unset-param", multiple=True)
 @click.option("--flip-param", multiple=True)
-@click.option("--strip-session", is_flag=True, help="Remove session cookies and auth headers for this request")
-@click.option("--set-body", default=None, help="Set raw body (prefix @ to read from file)")
-@click.option("--modify-file", type=click.Path(exists=True), default=None, help="JSON list of mutation ops")
+@click.option(
+    "--strip-session",
+    is_flag=True,
+    help="Remove session cookies and auth headers for this request",
+)
+@click.option(
+    "--set-body", default=None, help="Set raw body (prefix @ to read from file)"
+)
+@click.option(
+    "--modify-file",
+    type=click.Path(exists=True),
+    default=None,
+    help="JSON list of mutation ops",
+)
 @click.option("--follow-redirects/--no-follow-redirects", default=None)
 @click.option("--insecure", is_flag=True, default=None)
 @click.option("--timeout", type=float, default=None)
-@click.option("--diff", "diff_id", default=None, help="Compare response with a stored record id")
-@click.option("--fuzz", "do_fuzz", is_flag=True, help="After sending, auto-fuzz the request (smart variants)")
+@click.option(
+    "--diff", "diff_id", default=None, help="Compare response with a stored record id"
+)
+@click.option(
+    "--fuzz",
+    "do_fuzz",
+    is_flag=True,
+    help="After sending, auto-fuzz the request (smart variants)",
+)
 @click.option("--raw", is_flag=True, help="Print raw HTTP response")
 @click.pass_context
-def send_cmd(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header,
-             set_header, unset_header, set_param, unset_param, flip_param,
-             strip_session, set_body, modify_file, follow_redirects, insecure,
-             timeout, diff_id, do_fuzz, raw):
+def send_cmd(
+    ctx,
+    target,
+    url,
+    from_id,
+    curl_cmd,
+    raw_file,
+    method,
+    data,
+    cli_header,
+    cli_form,
+    set_header,
+    unset_header,
+    set_param,
+    unset_param,
+    flip_param,
+    strip_session,
+    set_body,
+    modify_file,
+    follow_redirects,
+    insecure,
+    timeout,
+    diff_id,
+    do_fuzz,
+    raw,
+):
     from .engine import send_and_record, send_request
     from .mutate import apply_mutations, parse_mutation_ops
     from .render import md_send
 
+    if target:
+        if target.startswith(("http://", "https://")) or (
+            "://" not in target and "/" in target and not Path(target).is_file()
+        ):
+            url = url or target
+        elif target.startswith("curl "):
+            curl_cmd = curl_cmd or target
+        elif Path(target).is_file():
+            raw_file = raw_file or target
+        else:
+            from_id = from_id or target
+
     # ---- ONE-SHOT mode: -u without a workspace ----
     if url and not from_id and not curl_cmd and not raw_file:
-        req = _build_oneshot(url, method, data, cli_header)
-        req, desc = _apply_send_mutations(req, {
-            "set_header": set_header, "unset_header": unset_header,
-            "set_param": set_param, "unset_param": unset_param,
-            "flip_param": flip_param, "strip_session": strip_session,
-            "set_body": set_body, "modify_file": modify_file,
-        })
-        req.follow_redirects = follow_redirects if follow_redirects is not None else True
+        req = _build_oneshot(url, method, data, cli_header, cli_form)
+        req, desc = _apply_send_mutations(
+            req,
+            {
+                "set_header": set_header,
+                "unset_header": unset_header,
+                "set_param": set_param,
+                "unset_param": unset_param,
+                "flip_param": flip_param,
+                "strip_session": strip_session,
+                "set_body": set_body,
+                "modify_file": modify_file,
+            },
+        )
+        req.follow_redirects = (
+            follow_redirects if follow_redirects is not None else True
+        )
         req.timeout = timeout or 10.0
         req.verify = not insecure
         response, _ = send_request(req, _one_shot_session())
@@ -277,23 +520,39 @@ def send_cmd(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header,
             return
         if do_fuzz:
             from .fuzz import run_fuzz
-            from .render import md_fuzz
 
             cfg = (ctx.obj or {}).get("config") or DarcoConfig.empty()
-            fres = run_fuzz(req, _one_shot_session(), baseline_response=response,
-                            concurrency=cfg.fuzz.concurrency)
-            out = {"id": None, "oneshot": True, "request": to_json(req),
-                   "response": to_json(response), "mutations": desc, "fuzz": fres}
+            fres = run_fuzz(
+                req,
+                _one_shot_session(),
+                baseline_response=response,
+                concurrency=cfg.fuzz.concurrency,
+            )
+            out = {
+                "id": None,
+                "oneshot": True,
+                "request": to_json(req),
+                "response": to_json(response),
+                "mutations": desc,
+                "fuzz": fres,
+            }
             _emit(ctx, out, md_send)
             return
-        _emit(ctx, {
-            "id": None, "oneshot": True, "request": to_json(req),
-            "response": to_json(response), "mutations": desc,
-        }, md_send)
+        _emit(
+            ctx,
+            {
+                "id": None,
+                "oneshot": True,
+                "request": to_json(req),
+                "response": to_json(response),
+                "mutations": desc,
+            },
+            md_send,
+        )
         return
 
     # ---- workspace mode ----
-    ws = _find_workspace(ctx)
+    ws = _find_workspace(ctx, auto_create_target=url)
     cfg = ws.load_config()
 
     if from_id:
@@ -302,12 +561,16 @@ def send_cmd(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header,
         base.parent_id = from_id
     elif curl_cmd:
         from .ingest import parse_curl
+
         base = parse_curl(curl_cmd)
     elif raw_file:
         from .ingest import parse_raw_http
+
         base = parse_raw_http(Path(raw_file).read_text())
     else:
-        raise DarcoError("provide a base request: --from <id>, --curl, --raw-file, or -u <url>")
+        raise DarcoError(
+            "provide a base request: -u <url>, 'darco send <url>', or --from <id>"
+        )
 
     if url:
         base.url = url
@@ -320,35 +583,51 @@ def send_cmd(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header,
     base.timeout = timeout if timeout is not None else cfg.timeout
     base.verify = not (cfg.insecure or (insecure is True))
 
-    ops = parse_mutation_ops({
-        "set_header": set_header, "unset_header": unset_header,
-        "set_param": set_param, "unset_param": unset_param,
-        "flip_param": flip_param, "strip_session": strip_session,
-        "set_body": set_body, "modify_file": modify_file,
-    })
-    request, descriptions = apply_mutations(base, ops)
+    ops = parse_mutation_ops(
+        {
+            "set_header": set_header,
+            "unset_header": unset_header,
+            "set_param": set_param,
+            "unset_param": unset_param,
+            "flip_param": flip_param,
+            "strip_session": strip_session,
+            "set_body": set_body,
+            "modify_file": modify_file,
+        }
+    )
+    request, _descriptions = apply_mutations(base, ops)
 
     session = ws.load_session()
-    record, session = send_and_record(ws, request, session, base_headers=cfg.base_headers)
+    record, session = send_and_record(
+        ws, request, session, base_headers=cfg.base_headers
+    )
 
     if record.error:
         _echo_json({"id": record.id, "error": record.error})
         sys.exit(1)
 
-    output: dict = {"id": record.id, "request": to_json(record.request), "response": to_json(record.response)}
+    output: dict = {
+        "id": record.id,
+        "request": to_json(record.request),
+        "response": to_json(record.response),
+    }
     if diff_id:
         other = ws.get_record(diff_id)
         if not other.response:
             raise DarcoError(f"record {diff_id!r} has no response to diff against")
         from .diff import diff_responses
+
         output["diff"] = diff_responses(other.response, record.response)
     if do_fuzz:
         from .fuzz import run_fuzz
-        from .render import md_fuzz
 
         cfg_darco: DarcoConfig = (ctx.obj or {}).get("config") or DarcoConfig.empty()
-        fres = run_fuzz(request, session, baseline_response=record.response,
-                        concurrency=cfg_darco.fuzz.concurrency)
+        fres = run_fuzz(
+            request,
+            session,
+            baseline_response=record.response,
+            concurrency=cfg_darco.fuzz.concurrency,
+        )
         output["fuzz"] = fres
     if raw:
         click.echo(_raw_response(record.response))
@@ -357,11 +636,13 @@ def send_cmd(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header,
 
 
 # ------------------------------------------------------------------ fuzz (smart default engine)
-def _resolve_base_request(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header):
+def _resolve_base_request(
+    ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header, cli_form=()
+):
     """Build a base Request from the same sources send uses. Returns (req, is_oneshot_session)."""
     cfg: DarcoConfig = (ctx.obj or {}).get("config") or DarcoConfig.empty()
     if url and not from_id and not curl_cmd and not raw_file:
-        req = _build_oneshot(url, method, data, cli_header)
+        req = _build_oneshot(url, method, data, cli_header, cli_form)
         # apply config base headers
         existing = {h.name.lower() for h in req.headers}
         for bh in cfg.headers:
@@ -371,49 +652,93 @@ def _resolve_base_request(ctx, from_id, curl_cmd, raw_file, url, method, data, c
         req.timeout = cfg.timeout
         req.verify = not cfg.insecure
         return req, _one_shot_session(), True
-    ws = _find_workspace(ctx)
+    ws = _find_workspace(ctx, auto_create_target=url)
     wcfg = ws.load_config()
     if from_id:
         base = ws.get_record(from_id).request.model_copy(deep=True)
         base.parent_id = from_id
     elif curl_cmd:
         from .ingest import parse_curl
+
         base = parse_curl(curl_cmd)
     elif raw_file:
         from .ingest import parse_raw_http
+
         base = parse_raw_http(Path(raw_file).read_text())
     else:
-        raise DarcoError("provide a base request: --from <id>, --curl, --raw-file, or -u <url>")
+        raise DarcoError(
+            "provide a base request: -u <url>, 'darco fuzz <url>', or --from <id>"
+        )
     if url:
         base.url = url
     if method:
         base.method = method.upper()
-    base.follow_redirects = base.follow_redirects if base.follow_redirects is not None else wcfg.follow_redirects
+    base.follow_redirects = (
+        base.follow_redirects
+        if base.follow_redirects is not None
+        else wcfg.follow_redirects
+    )
     base.timeout = base.timeout or wcfg.timeout
     base.verify = not wcfg.insecure
     return base, ws.load_session(), False
 
 
 @cli.command("fuzz")
+@click.argument("target", required=False, default=None)
+@click.option(
+    "-u", "--url", default=None, help="ONE-SHOT: target URL (no workspace needed)"
+)
 @click.option("--from", "from_id", default=None, help="Base request: history record id")
-@click.option("--curl", "curl_cmd", default=None, help="Base request: curl command string")
+@click.option(
+    "--curl", "curl_cmd", default=None, help="Base request: curl command string"
+)
 @click.option("--raw-file", type=click.Path(exists=True), default=None)
-@click.option("-u", "--url", default=None, help="ONE-SHOT: target URL (no workspace needed)")
 @click.option("-X", "--method", default=None)
-@click.option("--data", default=None, help="Body (prefix @file to read)")
-@click.option("--header", "cli_header", multiple=True)
-@click.option("--concurrency", type=int, default=None, help="Parallel variant dispatches")
+@click.option("-d", "--data", default=None, help="Body (prefix @file to read)")
+@click.option("-H", "--header", "cli_header", multiple=True)
+@click.option("-F", "--form", "cli_form", multiple=True)
+@click.option(
+    "--concurrency", type=int, default=None, help="Parallel variant dispatches"
+)
 @click.pass_context
-def fuzz_cmd(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header, concurrency):
+def fuzz_cmd(
+    ctx,
+    target,
+    url,
+    from_id,
+    curl_cmd,
+    raw_file,
+    method,
+    data,
+    cli_header,
+    cli_form,
+    concurrency,
+):
     """Smart-default fuzz: auto-mutate params (flip, type-confuse numerics, boundaries, SQL/XSS) and report anomalies."""
     from .fuzz import run_fuzz
     from .render import md_fuzz
 
+    if target:
+        if target.startswith(("http://", "https://")) or (
+            "://" not in target and "/" in target and not Path(target).is_file()
+        ):
+            url = url or target
+        elif target.startswith("curl "):
+            curl_cmd = curl_cmd or target
+        elif Path(target).is_file():
+            raw_file = raw_file or target
+        else:
+            from_id = from_id or target
+
     cfg: DarcoConfig = (ctx.obj or {}).get("config") or DarcoConfig.empty()
     if not cfg.fuzz.enabled:
-        raise DarcoError("fuzzing disabled in config ([fuzz] enabled = false); set enabled = true to run")
+        raise DarcoError(
+            "fuzzing disabled in config ([fuzz] enabled = false); set enabled = true to run"
+        )
 
-    req, session, _ = _resolve_base_request(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header)
+    req, session, _ = _resolve_base_request(
+        ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header, cli_form
+    )
     conc = concurrency or cfg.fuzz.concurrency
     # baseline = the clean request
     try:
@@ -427,10 +752,17 @@ def fuzz_cmd(ctx, from_id, curl_cmd, raw_file, url, method, data, cli_header, co
 
 def _engine_execute(req, session):
     from .engine import execute
+
     return execute(req, session)
 
 
-def _build_oneshot(url: str, method, data, cli_header) -> Request:
+def _build_oneshot(
+    url: str,
+    method: str | None = None,
+    data: str | None = None,
+    cli_header: tuple = (),
+    cli_form: tuple = (),
+) -> Request:
     headers = []
     for h in cli_header:
         name, sep, value = h.partition(":")
@@ -439,7 +771,23 @@ def _build_oneshot(url: str, method, data, cli_header) -> Request:
         headers.append(NameValue(name=name.strip(), value=value.strip()))
     body_type = BodyType.NONE
     body_raw = ""
-    if data:
+    body_form: list[NameValue] = []
+    body_json = None
+
+    if cli_form:
+        body_type = BodyType.FORM
+        for f in cli_form:
+            name, _, val = f.partition("=")
+            body_form.append(NameValue(name=name.strip(), value=val))
+        if not any(h.name.lower() == "content-type" for h in headers):
+            headers.append(
+                NameValue(
+                    name="Content-Type", value="application/x-www-form-urlencoded"
+                )
+            )
+        if not method:
+            method = "POST"
+    elif data:
         if data.startswith("@") and len(data) > 1:
             try:
                 body_raw = Path(data[1:]).read_text()
@@ -447,9 +795,41 @@ def _build_oneshot(url: str, method, data, cli_header) -> Request:
                 raise DarcoError(f"cannot read --data file: {exc}") from exc
         else:
             body_raw = data
-        body_type = BodyType.RAW
+        if body_raw.strip().startswith(("{", "[")):
+            try:
+                body_json = json.loads(body_raw)
+                body_type = BodyType.JSON
+                if not any(h.name.lower() == "content-type" for h in headers):
+                    headers.append(
+                        NameValue(name="Content-Type", value="application/json")
+                    )
+            except (ValueError, TypeError, json.JSONDecodeError):
+                body_type = BodyType.RAW
+        elif "=" in body_raw and not any(c in body_raw for c in ("\n", "\r", "{")):
+            body_type = BodyType.FORM
+            for pair in body_raw.split("&"):
+                if "=" in pair:
+                    k, _, v = pair.partition("=")
+                    body_form.append(NameValue(name=k, value=v))
+            if not any(h.name.lower() == "content-type" for h in headers):
+                headers.append(
+                    NameValue(
+                        name="Content-Type", value="application/x-www-form-urlencoded"
+                    )
+                )
+        else:
+            body_type = BodyType.RAW
+        if not method:
+            method = "POST"
+
+    if not url.startswith(("http://", "https://")):
+        url = "http://" + url
+
     split = urlsplit(url)
-    params = [NameValue(name=k, value=v) for k, v in parse_qsl(split.query, keep_blank_values=True)]
+    params = [
+        NameValue(name=k, value=v)
+        for k, v in parse_qsl(split.query, keep_blank_values=True)
+    ]
     clean_url = url.split("?", 1)[0] if split.query else url
     return Request(
         method=(method or "GET").upper(),
@@ -458,12 +838,15 @@ def _build_oneshot(url: str, method, data, cli_header) -> Request:
         params=params,
         body_type=body_type,
         body_raw=body_raw,
+        body_form=body_form,
+        body_json=body_json,
         source="oneshot",
     )
 
 
 def _apply_send_mutations(req: Request, opts: dict) -> tuple[Request, list[str]]:
     from .mutate import apply_mutations, parse_mutation_ops
+
     ops = parse_mutation_ops(opts)
     return apply_mutations(req, ops)
 
@@ -488,7 +871,12 @@ def diff_cmd(ctx, id_a, id_b):
 # ------------------------------------------------------------------ analyze
 @cli.command("analyze")
 @click.argument("record_id")
-@click.option("--save", "save", is_flag=True, help="Persist findings to the workspace (findings.json)")
+@click.option(
+    "--save",
+    "save",
+    is_flag=True,
+    help="Persist findings to the workspace (findings.json)",
+)
 @click.pass_context
 def analyze_cmd(ctx, record_id, save):
     from .analyze import analyze_request, analyze_response
@@ -503,23 +891,38 @@ def analyze_cmd(ctx, record_id, save):
         added = ws.add_findings(findings)
         _emit(ctx, {"id": record_id, "saved": added}, md_analyze)
         return
-    _emit(ctx, {"id": record_id, "findings": [to_json(f) for f in findings]}, md_analyze)
+    _emit(
+        ctx, {"id": record_id, "findings": [to_json(f) for f in findings]}, md_analyze
+    )
 
 
 # ------------------------------------------------------------------ proxy
 @cli.command("proxy")
 @click.option("--port", type=int, default=8080)
 @click.option("--listen", default="127.0.0.1")
-@click.option("--record-only", is_flag=True, default=True, help="Record flows only (v1 mode)")
+@click.option(
+    "--record-only", is_flag=True, default=True, help="Record flows only (v1 mode)"
+)
 @click.pass_context
 def proxy_cmd(ctx, port, listen, record_only):
     from .proxy import ProxyServer
 
     ws = _find_workspace(ctx)
     session = ws.load_session()
-    server = ProxyServer(ws, session, host=listen, port=port, base_headers=ws.load_config().base_headers)
+    server = ProxyServer(
+        ws, session, host=listen, port=port, base_headers=ws.load_config().base_headers
+    )
     bound = server.start()
-    click.echo(json.dumps({"status": "listening", "host": listen, "port": bound, "mode": "record-only"}))
+    click.echo(
+        json.dumps(
+            {
+                "status": "listening",
+                "host": listen,
+                "port": bound,
+                "mode": "record-only",
+            }
+        )
+    )
     try:
         while True:
             time.sleep(3600)
@@ -531,7 +934,10 @@ def proxy_cmd(ctx, port, listen, record_only):
 
 # ------------------------------------------------------------------ discover
 @cli.command("discover")
-@click.argument("url")
+@click.argument("url_arg", required=False, default=None)
+@click.option(
+    "-u", "--url", "url_opt", default=None, help="Target URL to discover/crawl"
+)
 @click.option("--depth", type=int, default=3)
 @click.option("--max-urls", type=int, default=500)
 @click.option("--workers", type=int, default=5)
@@ -540,19 +946,49 @@ def proxy_cmd(ctx, port, listen, record_only):
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
-def discover_cmd(ctx, url, depth, max_urls, workers, seed_files, no_js, insecure, timeout):
+def discover_cmd(
+    ctx,
+    url_arg,
+    url_opt,
+    depth,
+    max_urls,
+    workers,
+    seed_files,
+    no_js,
+    insecure,
+    timeout,
+):
     from .discovery.crawler import discover
     from .render import md_discover
 
-    ws = _find_workspace(ctx)
+    url = url_opt or url_arg
+    if not url:
+        raise DarcoError(
+            "provide a target URL: 'darco discover <url>' or 'darco discover -u <url>'"
+        )
+    if not url.startswith(("http://", "https://")):
+        url = "http://" + url
+
+    ws = _find_workspace(ctx, require=False, auto_create_target=url)
+    if ws is None:
+        ws = Workspace.create(url)
+
     cfg = ws.load_config()
     seeds: list[str] = []
     for f in seed_files:
-        seeds.extend(line.strip() for line in Path(f).read_text().splitlines() if line.strip())
+        seeds.extend(
+            line.strip() for line in Path(f).read_text().splitlines() if line.strip()
+        )
     sitemap = asyncio.run(
         discover(
-            ws, url, depth=depth, max_urls=max_urls, workers=workers,
-            seeds=tuple(seeds), parse_js=not no_js, timeout=timeout,
+            ws,
+            url,
+            depth=depth,
+            max_urls=max_urls,
+            workers=workers,
+            seeds=tuple(seeds),
+            parse_js=not no_js,
+            timeout=timeout,
             verify=not (cfg.insecure or insecure),
         )
     )
@@ -575,6 +1011,7 @@ def session_group(ctx):
     if ctx.invoked_subcommand is None:
         ws = _find_workspace(ctx)
         from .render import md_session
+
         _emit(ctx, to_json(ws.load_session()), md_session)
 
 
@@ -599,7 +1036,9 @@ def session_clear(ctx):
 @cli.command("export")
 @click.argument("record_id")
 @click.option("--raw", is_flag=True, help="Emit raw HTTP request text")
-@click.option("--response", "want_response", is_flag=True, help="Emit raw HTTP response text")
+@click.option(
+    "--response", "want_response", is_flag=True, help="Emit raw HTTP response text"
+)
 @click.pass_context
 def export_cmd(ctx, record_id, raw, want_response):
     from .render import md_record
@@ -620,15 +1059,33 @@ def export_cmd(ctx, record_id, raw, want_response):
 # ------------------------------------------------------------------ repeat
 @cli.command("repeat")
 @click.argument("record_id")
-@click.option("--count", type=int, default=1, help="Number of times to replay the stored request")
-@click.option("--interval", type=float, default=0.0, help="Seconds to sleep between replays")
-@click.option("--strip-session", is_flag=True, help="Remove session cookies/auth headers on every replay")
+@click.option(
+    "--count", type=int, default=1, help="Number of times to replay the stored request"
+)
+@click.option(
+    "--interval", type=float, default=0.0, help="Seconds to sleep between replays"
+)
+@click.option(
+    "--strip-session",
+    is_flag=True,
+    help="Remove session cookies/auth headers on every replay",
+)
 @click.option("--set-header", "set_header", multiple=True)
 @click.option("--set-param", "set_param", multiple=True)
 @click.option("--unset-param", "unset_param", multiple=True)
 @click.option("--follow-redirects/--no-follow-redirects", default=None)
 @click.pass_context
-def repeat_cmd(ctx, record_id, count, interval, strip_session, set_header, set_param, unset_param, follow_redirects):
+def repeat_cmd(
+    ctx,
+    record_id,
+    count,
+    interval,
+    strip_session,
+    set_header,
+    set_param,
+    unset_param,
+    follow_redirects,
+):
     """Replay a stored request COUNT times (rate-limit / OTP-verification loop)."""
     import time
 
@@ -645,10 +1102,14 @@ def repeat_cmd(ctx, record_id, count, interval, strip_session, set_header, set_p
     base = base_record.request.model_copy(deep=True)
     base.parent_id = record_id
 
-    ops = parse_mutation_ops({
-        "set_header": set_header, "set_param": set_param, "unset_param": unset_param,
-        "strip_session": strip_session,
-    })
+    ops = parse_mutation_ops(
+        {
+            "set_header": set_header,
+            "set_param": set_param,
+            "unset_param": unset_param,
+            "strip_session": strip_session,
+        }
+    )
 
     results = []
     session = ws.load_session()
@@ -660,19 +1121,33 @@ def repeat_cmd(ctx, record_id, count, interval, strip_session, set_header, set_p
             request.follow_redirects = cfg.follow_redirects
         request.timeout = cfg.timeout
         request.verify = not cfg.insecure
-        record, session = send_and_record(ws, request, session, base_headers=cfg.base_headers)
-        results.append({"index": i, "id": record.id,
-                        "status": record.response.status_code if record.response else None,
-                        "error": record.error})
+        record, session = send_and_record(
+            ws, request, session, base_headers=cfg.base_headers
+        )
+        results.append(
+            {
+                "index": i,
+                "id": record.id,
+                "status": record.response.status_code if record.response else None,
+                "error": record.error,
+            }
+        )
         if interval and i < count - 1:
             time.sleep(interval)
 
     statuses = [r["status"] for r in results if r["status"] is not None]
-    _emit(ctx, {
-        "from": record_id, "count": count, "ids": [r["id"] for r in results],
-        "statuses": statuses, "distinct_statuses": sorted(set(statuses)),
-        "errors": sum(1 for r in results if r["error"]),
-    }, md_repeat)
+    _emit(
+        ctx,
+        {
+            "from": record_id,
+            "count": count,
+            "ids": [r["id"] for r in results],
+            "statuses": statuses,
+            "distinct_statuses": sorted(set(statuses)),
+            "errors": sum(1 for r in results if r["error"]),
+        },
+        md_repeat,
+    )
 
 
 # ------------------------------------------------------------------ findings
@@ -688,7 +1163,11 @@ def findings_list(ctx):
 
     ws = _find_workspace(ctx)
     found = ws.load_findings()
-    _emit(ctx, {"count": len(found), "findings": [to_json(f) for f in found]}, md_findings_list)
+    _emit(
+        ctx,
+        {"count": len(found), "findings": [to_json(f) for f in found]},
+        md_findings_list,
+    )
 
 
 @findings_group.command("clear")

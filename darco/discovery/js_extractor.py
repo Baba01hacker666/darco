@@ -4,14 +4,20 @@ import re
 from urllib.parse import urljoin
 
 JS_PATTERNS = [
-    re.compile(r"""(?:fetch|axios\.(?:get|post|put|delete|patch|head))\s*\(\s*['"]([^'")\s]+)['"]"""),
+    re.compile(
+        r"""(?:fetch|axios\.(?:get|post|put|delete|patch|head))\s*\(\s*['"]([^'")\s]+)['"]"""
+    ),
     re.compile(r"""new\s+WebSocket\s*\(\s*['"]([^'")\s]+)['"]"""),
     re.compile(r"""\.open\s*\(\s*['"][A-Za-z]+['"]\s*,\s*['"]([^'")\s]+)['"]"""),
     re.compile(r"""url\s*[:=]\s*['"]([^'")\s]+)['"]"""),
-    re.compile(r"""['"](/(?:api|v\d|admin|internal|ws|graphql|rest)[^'"\s]*|\w+\.(?:php|asp|aspx|jsp|json))['"]"""),
+    re.compile(
+        r"""['"](/(?:api|v\d|admin|internal|ws|graphql|rest)[^'"\s]*|\w+\.(?:php|asp|aspx|jsp|json))['"]"""
+    ),
 ]
 
-_SKIP = re.compile(r"^\$?\{|^data:|^javascript:|\.(css|png|jpe?g|gif|svg|ico|woff2?|ttf|map)$|^//[^/]|^blob:")
+_SKIP = re.compile(
+    r"^\$?\{|^data:|^javascript:|\.(css|png|jpe?g|gif|svg|ico|woff2?|ttf|map)$|^//[^/]|^blob:"
+)
 
 
 def extract_js_endpoints(js_text: str, base_url: str | None = None) -> list[str]:

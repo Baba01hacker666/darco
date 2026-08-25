@@ -1,25 +1,33 @@
 import json
+import os
+from pathlib import Path
 
-import pytest
+from click.testing import CliRunner
+
+from darco.cli import cli
+
+REPO = Path(__file__).resolve().parent.parent
 
 
-def run(args, cwd):
-    import os
-    import subprocess
-    import sys
+class CliResult:
+    def __init__(self, returncode: int, stdout: str, stderr: str = ""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
 
-    REPO = __import__("pathlib").Path(__file__).resolve().parent.parent
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(REPO)
-    args = ["--json", *args]
-    return subprocess.run(
-        [sys.executable, "-m", "darco", *args],
-        cwd=cwd,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+
+def run(args, cwd, json_only=True):
+    runner = CliRunner()
+    if json_only:
+        args = ["--json", *args]
+    old_cwd = os.getcwd()
+    os.chdir(cwd)
+    try:
+        res = runner.invoke(cli, args)
+        stderr = str(res.exception) if res.exception else getattr(res, "stderr", "")
+        return CliResult(res.exit_code, res.stdout, stderr)
+    finally:
+        os.chdir(old_cwd)
 
 
 def _ws_name(app):
@@ -29,8 +37,10 @@ def _ws_name(app):
 # ------------------------------------------------------------------ repeat
 def test_cli_repeat_otp_until_rate_limit(app, tmp_path):
     run(["init", app], tmp_path)
-    ws = tmp_path / f"{_ws_name(app)}.darco"
-    run(["ingest", "curl", "curl", "-X", "POST", f"{app}/otp", "-d", "otp_code=000000"], tmp_path)
+    run(
+        ["ingest", "curl", "curl", "-X", "POST", f"{app}/otp", "-d", "otp_code=000000"],
+        tmp_path,
+    )
     # send once to create 0001
     r = run(["send", "--from", "0001"], tmp_path)
     assert r.returncode == 0, r.stderr
@@ -49,7 +59,9 @@ def test_cli_repeat_with_set_param(app, tmp_path):
     run(["init", app], tmp_path)
     run(["ingest", "curl", "curl", f"{app}/debug?enabled=true"], tmp_path)
     run(["send", "--from", "0001"], tmp_path)
-    r = run(["repeat", "0001", "--count", "2", "--set-param", "enabled=false"], tmp_path)
+    r = run(
+        ["repeat", "0001", "--count", "2", "--set-param", "enabled=false"], tmp_path
+    )
     assert r.returncode == 0, r.stderr
     data = json.loads(r.stdout)
     assert data["count"] == 2
@@ -90,11 +102,7 @@ def test_cli_findings_clear(app, tmp_path):
 def test_cli_default_output_is_markdown(app, tmp_path):
     run(["init", app], tmp_path)
     run(["ingest", "curl", "curl", f"{app}/echo"], tmp_path)
-    env = dict(__import__("os").environ)
-    env["PYTHONPATH"] = str(__import__("pathlib").Path(__file__).resolve().parent.parent)
-    import subprocess, sys
-    rr = subprocess.run([sys.executable, "-m", "darco", "send", "--from", "0001"],
-                        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
+    rr = run(["send", "--from", "0001"], tmp_path, json_only=False)
     assert rr.returncode == 0, rr.stderr
     # markdown marker present, raw JSON braces not on first line
     assert "# Sent" in rr.stdout
@@ -102,13 +110,10 @@ def test_cli_default_output_is_markdown(app, tmp_path):
 
 
 def test_cli_oneshot_send_without_workspace(app, tmp_path):
-    env = dict(__import__("os").environ)
-    env["PYTHONPATH"] = str(__import__("pathlib").Path(__file__).resolve().parent.parent)
-    import subprocess, sys
-    rr = subprocess.run(
-        [sys.executable, "-m", "darco", "--json", "send", "-u", f"{app}/echo",
-         "-X", "POST", "--data", "a=1", "--header", "X-Probe: 9"],
-        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60,
+    rr = run(
+        ["send", "-u", f"{app}/echo", "-X", "POST", "--data", "a=1", "--header", "X-Probe: 9"],
+        tmp_path,
+        json_only=True,
     )
     assert rr.returncode == 0, rr.stderr
     d = json.loads(rr.stdout)
@@ -119,13 +124,10 @@ def test_cli_oneshot_send_without_workspace(app, tmp_path):
 
 
 def test_cli_oneshot_fuzz_without_workspace(app, tmp_path):
-    env = dict(__import__("os").environ)
-    env["PYTHONPATH"] = str(__import__("pathlib").Path(__file__).resolve().parent.parent)
-    import subprocess, sys
-    rr = subprocess.run(
-        [sys.executable, "-m", "darco", "--json", "send", "-u", f"{app}/debug?enabled=true",
-         "--fuzz"],
-        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60,
+    rr = run(
+        ["send", "-u", f"{app}/debug?enabled=true", "--fuzz"],
+        tmp_path,
+        json_only=True,
     )
     assert rr.returncode == 0, rr.stderr
     d = json.loads(rr.stdout)

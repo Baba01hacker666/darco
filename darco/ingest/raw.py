@@ -8,7 +8,9 @@ from ..errors import DarcoError
 from ..models import BodyType, Cookie, NameValue, Request
 
 
-def parse_raw_http(text: str, *, scheme: str | None = None, source: str = "raw") -> Request:
+def parse_raw_http(
+    text: str, *, scheme: str | None = None, source: str = "raw"
+) -> Request:
     """Parse a raw HTTP request (Burp 'copy as http request' style) into a Request."""
     text = text.replace("\r\n", "\n")
     if "\n\n" in text:
@@ -37,7 +39,9 @@ def parse_raw_http(text: str, *, scheme: str | None = None, source: str = "raw")
     else:
         if host is None:
             raise DarcoError("raw request has no Host header and no absolute URL")
-        scheme = scheme or ("https" if ":443" in host or host.endswith(":443") else "http")
+        scheme = scheme or (
+            "https" if ":443" in host or host.endswith(":443") else "http"
+        )
         url = f"{scheme}://{host}{target}"
 
     cookies: list[Cookie] = []
@@ -54,7 +58,10 @@ def parse_raw_http(text: str, *, scheme: str | None = None, source: str = "raw")
     params: list[NameValue] = []
     split = urlsplit(url)
     if split.query:
-        params.extend(NameValue(name=k, value=v) for k, v in parse_qsl(split.query, keep_blank_values=True))
+        params.extend(
+            NameValue(name=k, value=v)
+            for k, v in parse_qsl(split.query, keep_blank_values=True)
+        )
         url = url.split("?", 1)[0]
 
     body_type = BodyType.NONE
@@ -62,7 +69,9 @@ def parse_raw_http(text: str, *, scheme: str | None = None, source: str = "raw")
     body_form: list[NameValue] = []
     body_raw = ""
     if body:
-        ctype = next((h.value for h in headers if h.name.lower() == "content-type"), "").lower()
+        ctype = next(
+            (h.value for h in headers if h.name.lower() == "content-type"), ""
+        ).lower()
         if "json" in ctype:
             body_type = BodyType.JSON
             try:
@@ -72,7 +81,10 @@ def parse_raw_http(text: str, *, scheme: str | None = None, source: str = "raw")
                 body_raw = body
         elif "x-www-form-urlencoded" in ctype:
             body_type = BodyType.FORM
-            body_form = [NameValue(name=k, value=v) for k, v in parse_qsl(body, keep_blank_values=True)]
+            body_form = [
+                NameValue(name=k, value=v)
+                for k, v in parse_qsl(body, keep_blank_values=True)
+            ]
         else:
             body_type = BodyType.RAW
             body_raw = body

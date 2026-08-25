@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from datetime import datetime, timezone
-from typing import Callable
+from datetime import UTC, datetime
 
 import httpx
 
 from .engine import execute
-from .models import BodyType, HistoryRecord, NameValue, Request, Response, SessionState
+from .models import BodyType, HistoryRecord, NameValue, Request, SessionState
 from .workspace import Workspace
 
 HOP_BY_HOP = {
@@ -52,7 +51,9 @@ class ProxyServer:
 
     # ------------------------------------------------------------------ lifecycle
     def start(self) -> int:
-        self._thread = threading.Thread(target=self._run, daemon=True, name="darco-proxy")
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="darco-proxy"
+        )
         self._thread.start()
         self._started.wait(timeout=10)
         if not self._started.is_set():
@@ -87,24 +88,33 @@ class ProxyServer:
             await server.wait_closed()
 
     # ------------------------------------------------------------------ connection handling
-    async def _on_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _on_client(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         try:
             request_line, headers = await _read_head(reader)
             parts = request_line.split(" ")
             if len(parts) < 3:
-                await _write_raw(writer, b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                await _write_raw(
+                    writer,
+                    b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
                 return
             method, target = parts[0].upper(), parts[1]
             if method == "CONNECT":
                 await self._handle_connect(reader, writer, target)
             else:
                 await self._handle_http(reader, writer, method, target, headers)
-        except (asyncio.IncompleteReadError, ConnectionError, asyncio.LimitOverrunError):
+        except (
+            asyncio.IncompleteReadError,
+            ConnectionError,
+            asyncio.LimitOverrunError,
+        ):
             pass
         finally:
             try:
                 writer.close()
-            except Exception:  # noqa: BLE001
+            except (OSError, asyncio.CancelledError, RuntimeError):
                 pass
 
     async def _handle_http(self, reader, writer, method, target, headers) -> None:
@@ -124,7 +134,10 @@ class ProxyServer:
             scheme = "https" if ":443" in host or host.endswith(":443") else "http"
             url = f"{scheme}://{host}{target}"
         else:
-            await _write_raw(writer, b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            await _write_raw(
+                writer,
+                b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
             return
 
         req = Request(
@@ -142,7 +155,7 @@ class ProxyServer:
         except httpx.HTTPError as exc:
             await _write_raw(
                 writer,
-                f"HTTP/1.1 502 Bad Gateway\r\nContent-Length: {len(str(exc))}\r\nConnection: close\r\n\r\n{exc}".encode("utf-8"),
+                f"HTTP/1.1 502 Bad Gateway\r\nContent-Length: {len(str(exc))}\r\nConnection: close\r\n\r\n{exc}".encode(),
             )
             return
         await _write_raw(writer, _serialize(raw_resp))
@@ -153,9 +166,14 @@ class ProxyServer:
         try:
             upstream_r, upstream_w = await asyncio.open_connection(host, port)
         except OSError as exc:
-            await _write_raw(writer, f"HTTP/1.1 502 Bad Gateway\r\nContent-Length: {len(str(exc))}\r\n\r\n".encode("utf-8"))
+            await _write_raw(
+                writer,
+                f"HTTP/1.1 502 Bad Gateway\r\nContent-Length: {len(str(exc))}\r\n\r\n".encode(),
+            )
             return
-        await _write_raw(writer, b"HTTP/1.1 200 Connection Established\r\n\r\n", close=False)
+        await _write_raw(
+            writer, b"HTTP/1.1 200 Connection Established\r\n\r\n", close=False
+        )
         await asyncio.to_thread(self._record_tunnel, authority)
         await _relay(reader, writer, upstream_r, upstream_w)
 
@@ -164,7 +182,7 @@ class ProxyServer:
         raw, model, session = execute(req, self.session, base_headers=self.base_headers)
         record = HistoryRecord(
             id=self.workspace.next_id(),
-            ts=datetime.now(timezone.utc).isoformat(),
+            ts=datetime.now(UTC).isoformat(),
             request=req,
             response=model,
         )
@@ -176,7 +194,7 @@ class ProxyServer:
         req = Request(method="CONNECT", url=f"https://{authority}", source="proxy")
         record = HistoryRecord(
             id=self.workspace.next_id(),
-            ts=datetime.now(timezone.utc).isoformat(),
+            ts=datetime.now(UTC).isoformat(),
             request=req,
             error="tunneled (CONNECT); traffic not decrypted in v1",
         )
@@ -198,18 +216,22 @@ async def _read_head(reader: asyncio.StreamReader) -> tuple[str, list[tuple[str,
     return request_line, headers
 
 
-async def _write_raw(writer: asyncio.StreamWriter, data: bytes, *, close: bool = True) -> None:
+async def _write_raw(
+    writer: asyncio.StreamWriter, data: bytes, *, close: bool = True
+) -> None:
     writer.write(data)
     await writer.drain()
     if close:
         try:
             writer.close()
-        except Exception:  # noqa: BLE001
+        except (OSError, asyncio.CancelledError, RuntimeError):
             pass
 
 
 def _serialize(raw: httpx.Response) -> bytes:
-    status_line = f"HTTP/1.1 {raw.status_code} {raw.reason_phrase}\r\n".encode("latin-1")
+    status_line = f"HTTP/1.1 {raw.status_code} {raw.reason_phrase}\r\n".encode(
+        "latin-1"
+    )
     header_lines: list[bytes] = []
     for name, value in raw.headers.items():
         if name.lower() in HOP_BY_HOP:
@@ -222,8 +244,10 @@ def _serialize(raw: httpx.Response) -> bytes:
 
 
 async def _relay(
-    client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter,
-    upstream_r: asyncio.StreamReader, upstream_w: asyncio.StreamWriter,
+    client_r: asyncio.StreamReader,
+    client_w: asyncio.StreamWriter,
+    upstream_r: asyncio.StreamReader,
+    upstream_w: asyncio.StreamWriter,
 ) -> None:
     async def pump(src: asyncio.StreamReader, dst: asyncio.StreamWriter) -> None:
         try:
@@ -238,7 +262,7 @@ async def _relay(
         finally:
             try:
                 dst.close()
-            except Exception:  # noqa: BLE001
+            except (OSError, asyncio.CancelledError, RuntimeError):
                 pass
 
     t1 = asyncio.create_task(pump(client_r, upstream_w))

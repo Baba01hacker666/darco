@@ -13,12 +13,12 @@ def parse_har(text_or_path: str | Path, *, source: str = "har") -> list[Request]
     if p.exists():
         try:
             data = json.loads(p.read_text())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise DarcoError(f"invalid HAR file: {exc}") from exc
     else:
         try:
             data = json.loads(text_or_path)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise DarcoError(f"invalid HAR payload: {exc}") from exc
 
     entries = data.get("log", {}).get("entries", [])
@@ -68,7 +68,10 @@ def _request_from_har(req: dict, *, source: str) -> Request:
                 body_raw = text
                 body_type = BodyType.RAW
         elif "x-www-form-urlencoded" in mime:
-            body_form = [NameValue(name=p.get("name", ""), value=p.get("value", "")) for p in post.get("params", [])]
+            body_form = [
+                NameValue(name=p.get("name", ""), value=p.get("value", ""))
+                for p in post.get("params", [])
+            ]
             body_type = BodyType.FORM
         else:
             body_raw = text

@@ -1,7 +1,15 @@
 import pytest
 
 from darco.errors import DarcoError
-from darco.models import Cookie, Finding, HistoryRecord, NameValue, Request, Response, SessionState
+from darco.models import (
+    Cookie,
+    Finding,
+    HistoryRecord,
+    NameValue,
+    Request,
+    Response,
+    SessionState,
+)
 from darco.workspace import Workspace, default_workspace_name, merge_cookies
 
 

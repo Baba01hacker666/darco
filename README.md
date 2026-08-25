@@ -29,7 +29,24 @@ python3 -m venv .venv
 darco --help
 ```
 
-## Quickstart (OTP rate-limit bypass scenario)
+## Quickstart & Direct Execution
+
+Hit any URL directly — no `init` or `send` subcommand required:
+
+```bash
+# 1. Direct one-shot request (curl / httpie style)
+darco https://target.test/api/user -X POST -d "user=admin"
+darco -u https://target.test/login
+
+# 2. Replay stored requests or auto-fuzz directly
+darco 0001 --strip-session
+darco https://target.test/debug?enabled=true --fuzz
+
+# 3. Direct crawl discovery (auto-creates workspace)
+darco discover https://target.test
+```
+
+### Burp-style Workspace Testing:
 
 ```bash
 # 1. Create a workspace for the target
@@ -39,13 +56,13 @@ darco init http://target.test
 darco ingest curl "curl -X POST http://target.test/otp -d otp_code=000000"
 
 # 3. Send it (session is captured automatically)
-darco send --from 0001
+darco 0001
 
 # 4. Repeat a few times; Darco flags the rate limit
 darco analyze 0003            # -> rate_limited finding (429 / Retry-After)
 
 # 5. The Burp-style trick: replay WITHOUT the session
-darco send --from 0003 --strip-session
+darco 0003 --strip-session
 
 # 6. Compare the two responses
 darco diff 0003 0004
@@ -54,24 +71,25 @@ darco diff 0003 0004
 Other mutation primitives:
 
 ```bash
-darco send --from 0001 --flip-param enabled            # true -> false, 1 -> 0
-darco send --from 0001 --set-header X-Admin: 1
-darco send --from 0001 --unset-header Authorization
-darco send --from 0001 --set-param user=admin
-darco send --from 0001 --unset-param otp_code
-darco send --from 0001 --modify-file ops.json          # JSON list of mutation ops
+darco 0001 --flip-param enabled            # true -> false, 1 -> 0
+darco 0001 --set-header X-Admin: 1
+darco 0001 --unset-header Authorization
+darco 0001 --set-param user=admin
+darco 0001 --unset-param otp_code
+darco 0001 --modify-file ops.json          # JSON list of mutation ops
 ```
 
-## New in v2 — smart fuzz engine, config files, on-the-fly mode
+## Smart Fuzz Engine, Config Files, & Direct Mode
 
 ```bash
 # One-shot: hit a URL directly, no workspace / init needed
-darco send -u https://app.test/admin
-darco fuzz -u https://app.test/user?id=5        # auto-mutate & report anomalies
+darco https://app.test/admin
+darco -u https://app.test/admin
+darco fuzz https://app.test/user?id=5        # auto-mutate & report anomalies
 
 # Smart defaults: fuzz is automatic on --fuzz (flip booleans, type-confuse
 # numbers with words, boundary IDs, SQL/XSS probes) and fires in the background
-darco send -u https://app.test/user?id=5 --fuzz
+darco https://app.test/user?id=5 --fuzz
 
 # Config file (darco.toml / darco.json) drives target, format, base headers,
 # and fuzz behavior — no flags needed every run
@@ -82,19 +100,19 @@ darco fuzz          # reads ./darco.toml
 
 | Command | Purpose |
 | --- | --- |
+| `darco <url>` / `darco -u <url>` | Direct request execution (curl / httpie style) |
+| `darco <id>` / `darco send [id\|url]` | Send or replay a request (with mutations like `--strip-session`, `--flip-param`) |
+| `darco fuzz [url\|id]` | Smart-default fuzz: flip booleans, type-confuse numerics, boundary IDs, SQL/XSS; report anomalies |
+| `darco discover [url]` | Crawl & parse: endpoints, forms, JS refs, robots, signals |
 | `darco init <target>` | Create a workspace (`<host>.darco/`) |
 | `darco ingest curl "<curl ...>"` | Parse a curl command into history |
 | `darco ingest raw <file>` | Parse a raw HTTP request (Burp style) |
 | `darco ingest har <file>` | Import requests from a HAR file |
-| `darco send --from <id>` | Send a stored request (or `--curl`, `--raw-file`, or `-u <url>` one-shot) |
-| `darco send <...> --fuzz` | Send, then auto-fuzz the request (smart variants) |
-| `darco fuzz -u <url>` | Smart-default fuzz: flip booleans, type-confuse numerics, boundary IDs, SQL/XSS; report anomalies |
 | `darco repeat <id> --count N` | Replay a stored request N times (rate-limit / OTP loops) |
 | `darco diff <idA> <idB>` | Structured response diff (status/headers/body/JSON) |
 | `darco analyze <id> [--save]` | Signals: reflections, error leaks, rate limits, CAPTCHA, auth cookies; `--save` persists to `findings.json` |
 | `darco findings list\|clear` | Inspect or wipe the workspace's accumulated findings |
 | `darco proxy --port 8080` | Record-only forward proxy; flows land in history |
-| `darco discover <url>` | Crawl & parse: endpoints, forms, JS refs, robots, signals |
 | `darco status` / `darco session list\|clear` | Inspect or reset session state |
 | `darco export <id> [--raw]` | Export a request for Burp/curl round-trips |
 

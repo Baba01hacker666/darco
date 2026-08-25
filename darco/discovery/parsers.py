@@ -11,7 +11,13 @@ SKIP_SCHEMES = {"javascript:", "mailto:", "tel:", "data:", "about:", "file:", "f
 
 
 def _is_captcha(text: str) -> bool:
-    return bool(re.search(r"recaptcha|g-recaptcha|hcaptcha|turnstile|geetest|cloudflare-challenge", text, re.IGNORECASE))
+    return bool(
+        re.search(
+            r"recaptcha|g-recaptcha|hcaptcha|turnstile|geetest|cloudflare-challenge",
+            text,
+            re.IGNORECASE,
+        )
+    )
 
 
 def extract_links(soup: BeautifulSoup, base_url: str) -> list[str]:
@@ -40,9 +46,7 @@ def extract_meta_refresh(soup: BeautifulSoup, base_url: str) -> list[str]:
 
 def extract_scripts(soup: BeautifulSoup, base_url: str) -> list[str]:
     return [
-        urljoin(base_url, s.get("src"))
-        for s in soup.find_all("script")
-        if s.get("src")
+        urljoin(base_url, s.get("src")) for s in soup.find_all("script") if s.get("src")
     ]
 
 
@@ -71,11 +75,21 @@ def extract_forms(soup: BeautifulSoup, base_url: str) -> list[Form]:
             name = sel.get("name")
             if not name:
                 continue
-            inputs.append(FormInput(name=name, type="select", default=sel.find("option", selected=True).get("value") if sel.find("option", selected=True) else None))
+            inputs.append(
+                FormInput(
+                    name=name,
+                    type="select",
+                    default=sel.find("option", selected=True).get("value")
+                    if sel.find("option", selected=True)
+                    else None,
+                )
+            )
         for ta in form.find_all("textarea"):
             name = ta.get("name")
             if name:
-                inputs.append(FormInput(name=name, type="textarea", default=ta.get_text()))
+                inputs.append(
+                    FormInput(name=name, type="textarea", default=ta.get_text())
+                )
         captcha = _is_captcha(str(form))
         forms.append(Form(action=action, method=method, inputs=inputs, captcha=captcha))
     return forms

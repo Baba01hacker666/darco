@@ -3,10 +3,16 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
-from .models import Finding, NameValue, Request, Response
+from .models import Finding, Request, Response
 
-PARAM_PATTERN = re.compile(r"(admin|debug|bypass|role|verified|is_|enable|allow|flag|token|secret|otp|pin|test|dev|internal)", re.IGNORECASE)
-PATH_PATTERN = re.compile(r"/(admin|internal|debug|backup|api/v\d?|swagger|docs|env|\.git|config|test|dev|console|actuator|\.env)(/|$|\.|_)", re.IGNORECASE)
+PARAM_PATTERN = re.compile(
+    r"(admin|debug|bypass|role|verified|is_|enable|allow|flag|token|secret|otp|pin|test|dev|internal)",
+    re.IGNORECASE,
+)
+PATH_PATTERN = re.compile(
+    r"/(admin|internal|debug|backup|api/v\d?|swagger|docs|env|\.git|config|test|dev|console|actuator|\.env)(/|$|\.|_)",
+    re.IGNORECASE,
+)
 BOOLEAN_VALUES = {"true", "false", "1", "0", "yes", "no", "on", "off"}
 ERROR_PATTERNS = [
     r"Traceback \(most recent call last\)",
@@ -26,15 +32,38 @@ ERROR_PATTERNS = [
     r"at [\w.$]+\.\w+\([\w.$]+\.java:\d+\)",
     r"Internal Server Error",
 ]
-RATE_PATTERN = re.compile(r"rate\s*limit|too many requests|try again later|slow down|temporarily blocked", re.IGNORECASE)
-CAPTCHA_PATTERN = re.compile(r"recaptcha|g-recaptcha|hcaptcha|turnstile|geetest|cloudflare-challenge|google\.com/recaptcha|hcaptcha\.com|challenges\.cloudflare", re.IGNORECASE)
+RATE_PATTERN = re.compile(
+    r"rate\s*limit|too many requests|try again later|slow down|temporarily blocked",
+    re.IGNORECASE,
+)
+CAPTCHA_PATTERN = re.compile(
+    r"recaptcha|g-recaptcha|hcaptcha|turnstile|geetest|cloudflare-challenge|google\.com/recaptcha|hcaptcha\.com|challenges\.cloudflare",
+    re.IGNORECASE,
+)
 AUTH_COOKIE_PATTERN = re.compile(r"session|token|jwt|auth|sid|remember", re.IGNORECASE)
-INTERESTING_HEADERS = {"server", "x-powered-by", "x-aspnet-version", "x-backend", "via", "x-debug", "www-authenticate", "x-forwarded-for", "x-real-ip"}
+INTERESTING_HEADERS = {
+    "server",
+    "x-powered-by",
+    "x-aspnet-version",
+    "x-backend",
+    "via",
+    "x-debug",
+    "www-authenticate",
+    "x-forwarded-for",
+    "x-real-ip",
+}
 
 _finding_counter = 0
 
 
-def _finding(f_type: str, location: str, evidence: str, suggestion: str, severity: str = "info", request_id: str | None = None) -> Finding:
+def _finding(
+    f_type: str,
+    location: str,
+    evidence: str,
+    suggestion: str,
+    severity: str = "info",
+    request_id: str | None = None,
+) -> Finding:
     global _finding_counter
     _finding_counter += 1
     return Finding(
@@ -112,12 +141,14 @@ def analyze_response(request: Request, response: Response) -> list[Finding]:
                 "info",
             )
         )
-    if response.status_code == 429 or any(h.name.lower() == "retry-after" for h in response.headers):
+    if response.status_code == 429 or any(
+        h.name.lower() == "retry-after" for h in response.headers
+    ):
         findings.append(
             _finding(
                 "rate_limited",
                 loc,
-                f"status 429 or Retry-After header",
+                "status 429 or Retry-After header",
                 "Rate limit engaged. Try --strip-session, alternate headers, or delayed retries; verify the limit is keyed on what you expect.",
                 "medium",
             )

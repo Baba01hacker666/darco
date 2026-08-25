@@ -68,7 +68,17 @@ def _parse_cookies(raw: str) -> list[Cookie]:
             continue
         name, _, value = part.partition("=")
         name = name.strip()
-        if name.lower() in {"expires", "path", "domain", "max-age", "secure", "httponly", "samesize", "samesite", "version"}:
+        if name.lower() in {
+            "expires",
+            "path",
+            "domain",
+            "max-age",
+            "secure",
+            "httponly",
+            "samesize",
+            "samesite",
+            "version",
+        }:
             continue
         cookies.append(Cookie(name=name, value=value.strip()))
     return cookies
@@ -93,17 +103,56 @@ def _ensure_content_type(headers: list[NameValue], value: str) -> None:
 
 
 LONG_VALUE_FLAGS = {
-    "--url", "--request", "--header", "--data", "--data-raw", "--data-binary",
-    "--data-urlencode", "--data-json", "--form", "--cookie", "--user",
-    "--user-agent", "--referer", "--max-time", "--connect-timeout",
+    "--url",
+    "--request",
+    "--header",
+    "--data",
+    "--data-raw",
+    "--data-binary",
+    "--data-urlencode",
+    "--data-json",
+    "--form",
+    "--cookie",
+    "--user",
+    "--user-agent",
+    "--referer",
+    "--max-time",
+    "--connect-timeout",
 }
 SHORT_VALUE_FLAGS = {
-    "-X", "-H", "-d", "-F", "-b", "-u", "-A", "-e",
+    "-X",
+    "-H",
+    "-d",
+    "-F",
+    "-b",
+    "-u",
+    "-A",
+    "-e",
 }
 SKIP_VALUE_FLAGS = {"-o", "-c", "-D", "--output", "--cookie-jar", "--dump-header"}
-BOOL_FLAGS = {"-L", "--location", "-k", "--insecure", "-G", "--get", "-I", "--head",
-              "-s", "--silent", "-S", "--show-error", "-v", "--verbose", "--compressed",
-              "--http1.1", "--http2", "--http1.0", "-i", "--include", "--path-as-is"}
+BOOL_FLAGS = {
+    "-L",
+    "--location",
+    "-k",
+    "--insecure",
+    "-G",
+    "--get",
+    "-I",
+    "--head",
+    "-s",
+    "--silent",
+    "-S",
+    "--show-error",
+    "-v",
+    "--verbose",
+    "--compressed",
+    "--http1.1",
+    "--http2",
+    "--http1.0",
+    "-i",
+    "--include",
+    "--path-as-is",
+}
 
 
 def parse_curl(command: str, *, source: str = "curl") -> Request:
@@ -127,7 +176,7 @@ def parse_curl(command: str, *, source: str = "curl") -> Request:
     head_mode = False
 
     def apply_value_flag(flag: str, arg: str) -> None:
-        nonlocal method, explicit_method, timeout, verify, follow_redirects, get_mode, head_mode
+        nonlocal method, explicit_method, timeout
         if flag in ("-X", "--request"):
             method = arg.upper()
             explicit_method = True
@@ -227,7 +276,10 @@ def parse_curl(command: str, *, source: str = "curl") -> Request:
     params: list[NameValue] = []
     split = urlsplit(url)
     if split.query:
-        params.extend(NameValue(name=k, value=v) for k, v in parse_qsl(split.query, keep_blank_values=True))
+        params.extend(
+            NameValue(name=k, value=v)
+            for k, v in parse_qsl(split.query, keep_blank_values=True)
+        )
         url = url.split("?", 1)[0]
 
     body_type = BodyType.NONE

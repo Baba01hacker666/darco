@@ -32,7 +32,9 @@ def test_discover_builds_sitemap(app, workspace):
     assert "auth_required" in signal_types  # /admin 403
 
     assert set(sitemap.robots) == {"/admin", "/backup"}
-    assert any(e.url == f"{app}/backup" and e.source == "robots" for e in sitemap.endpoints)
+    assert any(
+        e.url == f"{app}/backup" and e.source == "robots" for e in sitemap.endpoints
+    )
 
     admin = next(e for e in sitemap.endpoints if e.url == f"{app}/admin")
     assert admin.auth_required is True

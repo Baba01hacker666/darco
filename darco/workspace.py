@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .errors import DarcoError
@@ -12,8 +11,6 @@ from .models import (
     Finding,
     HistoryRecord,
     NameValue,
-    Request,
-    Response,
     SessionState,
     SiteMap,
     WorkspaceConfig,
@@ -24,11 +21,15 @@ BODY_PREVIEW_CAP = 1_000_000  # inline body preview cap stored in history.jsonl
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def default_workspace_name(target: str) -> str:
-    host = re.sub(r"^[a-z]+://", "", target, flags=re.IGNORECASE).split("/")[0].split(":")[0]
+    host = (
+        re.sub(r"^[a-z]+://", "", target, flags=re.IGNORECASE)
+        .split("/")[0]
+        .split(":")[0]
+    )
     host = re.sub(r"[^A-Za-z0-9._-]", "_", host) or "target"
     return f"{host}.darco"
 
@@ -57,7 +58,7 @@ class Workspace:
         follow_redirects: bool = True,
         timeout: float = 10.0,
         insecure: bool = False,
-    ) -> "Workspace":
+    ) -> Workspace:
         path = Path(path) if path else Path(default_workspace_name(target))
         if path.exists():
             if (path / "workspace.json").exists():
@@ -83,7 +84,7 @@ class Workspace:
         return ws
 
     @classmethod
-    def open(cls, path: Path) -> "Workspace":
+    def open(cls, path: Path) -> Workspace:
         path = Path(path)
         if not (path / "workspace.json").exists():
             raise DarcoError(f"not a darco workspace: {path}")
@@ -99,7 +100,7 @@ class Workspace:
                                 max_id = max(max_id, int(rec_id))
                             else:
                                 max_id += 1
-                        except Exception:
+                        except (ValueError, TypeError, json.JSONDecodeError, KeyError):
                             max_id += 1
         ws._count = max_id
         return ws
@@ -108,7 +109,7 @@ class Workspace:
     def load_config(self) -> WorkspaceConfig:
         try:
             return WorkspaceConfig.model_validate_json(self.config_file.read_text())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise DarcoError(f"corrupt workspace.json: {exc}") from exc
 
     def save_config(self, cfg: WorkspaceConfig) -> None:
@@ -172,7 +173,10 @@ class Workspace:
     # ------------------------------------------------------------------ findings / sitemap
     def load_findings(self) -> list[Finding]:
         try:
-            return [Finding.model_validate(f) for f in json.loads(self.findings_file.read_text())]
+            return [
+                Finding.model_validate(f)
+                for f in json.loads(self.findings_file.read_text())
+            ]
         except Exception:  # noqa: BLE001
             return []
 
@@ -210,11 +214,14 @@ class Workspace:
             "cookies": [{"name": c.name, "domain": c.domain} for c in session.cookies],
             "csrf_hosts": sorted(session.csrf_headers),
             "findings_count": len(findings),
-            "sitemap": self.sitemap_file.exists() and self.sitemap_file.stat().st_size > 2,
+            "sitemap": self.sitemap_file.exists()
+            and self.sitemap_file.stat().st_size > 2,
         }
 
 
-def merge_cookies(base: list[Cookie], incoming: list[Cookie], host: str) -> list[Cookie]:
+def merge_cookies(
+    base: list[Cookie], incoming: list[Cookie], host: str
+) -> list[Cookie]:
     """Merge incoming cookies into base, replacing by (domain, name)."""
     merged = list(base)
     for cookie in incoming:
@@ -225,5 +232,7 @@ def merge_cookies(base: list[Cookie], incoming: list[Cookie], host: str) -> list
             for c in merged
             if not (c.name == cookie.name and (c.domain or host) == domain)
         ]
-        merged.append(Cookie(name=cookie.name, value=cookie.value, domain=domain, path=path))
+        merged.append(
+            Cookie(name=cookie.name, value=cookie.value, domain=domain, path=path)
+        )
     return merged
