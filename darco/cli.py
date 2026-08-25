@@ -1640,6 +1640,11 @@ def proxy_cmd(ctx, port, listen, record_only):
     is_flag=True,
     help="Auto-test discovered endpoints/forms for XSS reflection",
 )
+@click.option(
+    "--upload",
+    is_flag=True,
+    help="Auto-audit discovered file upload forms/endpoints (SVG/HTML XSS)",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -1655,6 +1660,7 @@ def discover_cmd(
     fuzz,
     sqli,
     xss,
+    upload,
     insecure,
     timeout,
 ):
@@ -1677,7 +1683,7 @@ def discover_cmd(
 
     cfg = ws.load_config()
 
-    if fuzz or sqli or xss:
+    if fuzz or sqli or xss or upload:
         report = asyncio.run(
             run_auto_scan(
                 ws,
@@ -1689,6 +1695,7 @@ def discover_cmd(
                 fuzz=fuzz,
                 sqli=sqli,
                 xss=xss,
+                upload=upload,
                 timeout=timeout,
                 verify=not (cfg.insecure or insecure),
             )
@@ -1736,6 +1743,11 @@ def discover_cmd(
     is_flag=True,
     help="Auto-test discovered endpoints/forms for XSS reflection",
 )
+@click.option(
+    "--upload",
+    is_flag=True,
+    help="Auto-audit discovered file upload forms/endpoints",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -1751,6 +1763,7 @@ def crawl_cmd(
     fuzz,
     sqli,
     xss,
+    upload,
     insecure,
     timeout,
 ):
@@ -1767,6 +1780,7 @@ def crawl_cmd(
         fuzz=fuzz,
         sqli=sqli,
         xss=xss,
+        upload=upload,
         insecure=insecure,
         timeout=timeout,
     )
@@ -1781,6 +1795,7 @@ def crawl_cmd(
 @click.option("--no-fuzz", is_flag=True, help="Disable parameter mutation fuzzing")
 @click.option("--no-sqli", is_flag=True, help="Disable SQL injection testing")
 @click.option("--no-xss", is_flag=True, help="Disable XSS reflection testing")
+@click.option("--no-upload", is_flag=True, help="Disable file upload security auditing")
 @click.option("--no-js", is_flag=True)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
@@ -1795,11 +1810,12 @@ def scan_cmd(
     no_fuzz,
     no_sqli,
     no_xss,
+    no_upload,
     no_js,
     insecure,
     timeout,
 ):
-    """All-in-one automated pipeline: crawl target, detect WAF/tech, and auto-fuzz/audit for SQLi and XSS."""
+    """All-in-one automated pipeline: crawl target, detect WAF/tech, and auto-fuzz/audit for SQLi, XSS, and file uploads."""
     ctx.invoke(
         discover_cmd,
         url_arg=url_arg,
@@ -1812,6 +1828,7 @@ def scan_cmd(
         fuzz=not no_fuzz,
         sqli=not no_sqli,
         xss=not no_xss,
+        upload=not no_upload,
         insecure=insecure,
         timeout=timeout,
     )
@@ -1826,6 +1843,7 @@ def scan_cmd(
 @click.option("--no-fuzz", is_flag=True)
 @click.option("--no-sqli", is_flag=True)
 @click.option("--no-xss", is_flag=True)
+@click.option("--no-upload", is_flag=True)
 @click.option("--no-js", is_flag=True)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
@@ -1840,6 +1858,7 @@ def auto_cmd(
     no_fuzz,
     no_sqli,
     no_xss,
+    no_upload,
     no_js,
     insecure,
     timeout,
@@ -1855,6 +1874,7 @@ def auto_cmd(
         no_fuzz=no_fuzz,
         no_sqli=no_sqli,
         no_xss=no_xss,
+        no_upload=no_upload,
         no_js=no_js,
         insecure=insecure,
         timeout=timeout,

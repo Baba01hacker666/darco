@@ -1,3 +1,4 @@
+import re
 from urllib.parse import parse_qsl
 
 import httpx
@@ -112,6 +113,7 @@ async def run_auto_scan(
     fuzz: bool = True,
     sqli: bool = True,
     xss: bool = True,
+    upload: bool = True,
     timeout: float = 10.0,
     verify: bool = True,
 ) -> AutoScanReport:
@@ -220,25 +222,64 @@ async def run_auto_scan(
             except (httpx.HTTPError, OSError, TimeoutError, ValueError):
                 pass
 
-    # Step 3: Check for file upload forms and run file upload security audits
-    for f in sitemap.forms:
-        file_inputs = [inp for inp in f.inputs if inp.type == "file"]
-        if file_inputs:
-            action_url = f.action
-            clean_action = (
-                action_url.split("?", 1)[0] if "?" in action_url else action_url
-            )
-            for finp in file_inputs:
+    # Step 3: Check for file upload forms and upload endpoints
+    if upload:
+        audited_upload_urls: set[str] = set()
+        for f in sitemap.forms:
+            file_inputs = [inp for inp in f.inputs if inp.type == "file"]
+            if file_inputs:
+                action_url = f.action
+                clean_action = (
+                    action_url.split("?", 1)[0] if "?" in action_url else action_url
+                )
+                audited_upload_urls.add(clean_action)
+                for finp in file_inputs:
+                    try:
+                        up_req = Request(
+                            method=(f.method or "POST").upper(),
+                            url=clean_action,
+                            verify=verify,
+                            source="form",
+                        )
+                        up_res = audit_file_upload(
+                            up_req, session=session, file_field=finp.name
+                        )
+                        for uf in up_res.findings:
+                            report.upload_findings.append(uf)
+                            all_new_findings.append(
+                                Finding(
+                                    id=f"upload-{uf.param}-{uf.vulnerability_type}",
+                                    type=f"upload_{uf.vulnerability_type}",
+                                    severity=(
+                                        "high"
+                                        if uf.confidence in ("confirmed", "high")
+                                        else "medium"
+                                    ),
+                                    location=f"{up_req.method} {up_req.url} ({uf.param})",
+                                    evidence=uf.evidence,
+                                    suggestion=uf.suggestion,
+                                )
+                            )
+                    except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+                        pass
+
+        # Also audit any discovered endpoints matching upload patterns
+        for ep in sitemap.endpoints:
+            clean_ep = ep.url.split("?", 1)[0]
+            if clean_ep not in audited_upload_urls and re.search(
+                r"/(?:upload|avatar|attachment|photo|media)(?:/|\.|\?|$)",
+                clean_ep,
+                re.IGNORECASE,
+            ):
+                audited_upload_urls.add(clean_ep)
                 try:
                     up_req = Request(
-                        method=(f.method or "POST").upper(),
-                        url=clean_action,
+                        method="POST",
+                        url=clean_ep,
                         verify=verify,
-                        source="form",
+                        source="crawler",
                     )
-                    up_res = audit_file_upload(
-                        up_req, session=session, file_field=finp.name
-                    )
+                    up_res = audit_file_upload(up_req, session=session)
                     for uf in up_res.findings:
                         report.upload_findings.append(uf)
                         all_new_findings.append(

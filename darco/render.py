@@ -805,6 +805,48 @@ def md_scan(d: dict) -> str:
             lines.append(f"- **Remediation**: {sugg}")
             lines.append("")
 
+    # Upload Security Findings
+    upload_findings = d.get("upload_findings") or []
+    if upload_findings:
+        lines.append(f"## 📁 File Upload Security Findings ({len(upload_findings)})")
+        lines.append("")
+        for f in upload_findings:
+            param = f.get("param") if isinstance(f, dict) else getattr(f, "param", "")
+            fn = (
+                f.get("filename") if isinstance(f, dict) else getattr(f, "filename", "")
+            )
+            v_type = (
+                f.get("vulnerability_type")
+                if isinstance(f, dict)
+                else getattr(f, "vulnerability_type", "")
+            )
+            conf = (
+                f.get("confidence")
+                if isinstance(f, dict)
+                else getattr(f, "confidence", "high")
+            )
+            ev = (
+                f.get("evidence") if isinstance(f, dict) else getattr(f, "evidence", "")
+            )
+            sugg = (
+                f.get("suggestion")
+                if isinstance(f, dict)
+                else getattr(f, "suggestion", "")
+            )
+            file_url = (
+                f.get("file_url")
+                if isinstance(f, dict)
+                else getattr(f, "file_url", None)
+            )
+            lines.append(
+                f"### **[{conf.upper()}]** Upload `{v_type}` on field `{param}` (`{fn}`)"
+            )
+            if file_url:
+                lines.append(f"- **Accessible Stored URL**: `{file_url}`")
+            lines.append(f"- **Evidence**: {ev}")
+            lines.append(f"- **Remediation**: {sugg}")
+            lines.append("")
+
     # Fuzzing Anomalies
     if anoms:
         lines.append(f"## 🔍 Fuzzing Anomalies & Behavior Shifts ({len(anoms)})")
