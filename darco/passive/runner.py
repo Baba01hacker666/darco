@@ -47,13 +47,17 @@ async def run_passive_enum(
 
     all_findings: list[Finding] = []
 
-    async with httpx.AsyncClient(timeout=timeout, verify=verify, trust_env=False, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout, verify=verify, trust_env=False, follow_redirects=True
+    ) as client:
         # Run async reconnaissance tasks concurrently
         tasks = []
         if dns:
             tasks.append(("dns", enumerate_dns(domain, client)))
         if subdomains:
-            tasks.append(("crtsh", enumerate_subdomains_crtsh(domain, client, timeout=timeout)))
+            tasks.append(
+                ("crtsh", enumerate_subdomains_crtsh(domain, client, timeout=timeout))
+            )
         if security_txt:
             tasks.append(("sec_txt", inspect_security_txt(base_url, client)))
 
@@ -81,7 +85,10 @@ async def run_passive_enum(
                 report.dns_records = dns_records
                 all_findings.extend(dns_findings)
                 report.ip_addresses = [
-                    r.value for r in dns_records if r.record_type in ("A", "AAAA") and r.name.lower() == domain.lower()
+                    r.value
+                    for r in dns_records
+                    if r.record_type in ("A", "AAAA")
+                    and r.name.lower() == domain.lower()
                 ]
 
             elif task_name == "crtsh" and isinstance(res, list):
@@ -97,7 +104,9 @@ async def run_passive_enum(
                 darco_resp = Response(
                     status_code=res.status_code,
                     reason=res.reason_phrase or "",
-                    headers=[NameValue(name=k, value=v) for k, v in res.headers.items()],
+                    headers=[
+                        NameValue(name=k, value=v) for k, v in res.headers.items()
+                    ],
                     body=res.text,
                     body_len=len(res.content),
                     url=str(res.url),
@@ -116,7 +125,9 @@ async def run_passive_enum(
 
                 # Headers audit
                 if headers:
-                    pres_hdrs, miss_hdrs, hdr_findings = audit_security_headers(darco_resp, base_url)
+                    pres_hdrs, miss_hdrs, hdr_findings = audit_security_headers(
+                        darco_resp, base_url
+                    )
                     report.security_headers = pres_hdrs
                     report.missing_security_headers = miss_hdrs
                     all_findings.extend(hdr_findings)

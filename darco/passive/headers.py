@@ -60,7 +60,9 @@ def audit_security_headers(
         else:
             missing_headers.append(header_name)
             # Only report missing HSTS for HTTPS targets
-            if header_name == "Strict-Transport-Security" and not loc.startswith("https://"):
+            if header_name == "Strict-Transport-Security" and not loc.startswith(
+                "https://"
+            ):
                 continue
 
             findings.append(

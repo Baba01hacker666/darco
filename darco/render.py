@@ -108,8 +108,18 @@ def md_send(d: dict) -> str:
             waf_list = d["wafs"]
             waf_strs = []
             for w in waf_list:
-                w_name = w.get("name") if isinstance(w, dict) else getattr(w, "name", "")
-                w_blk = " (BLOCKED)" if (w.get("blocked") if isinstance(w, dict) else getattr(w, "blocked", False)) else ""
+                w_name = (
+                    w.get("name") if isinstance(w, dict) else getattr(w, "name", "")
+                )
+                w_blk = (
+                    " (BLOCKED)"
+                    if (
+                        w.get("blocked")
+                        if isinstance(w, dict)
+                        else getattr(w, "blocked", False)
+                    )
+                    else ""
+                )
                 waf_strs.append(f"`{w_name}{w_blk}`")
             lines.append("- **WAF / Shield**: " + ", ".join(waf_strs))
 
@@ -117,9 +127,19 @@ def md_send(d: dict) -> str:
             tech_list = d["technologies"]
             tech_strs = []
             for t in tech_list:
-                t_name = t.get("name") if isinstance(t, dict) else getattr(t, "name", "")
-                t_ver = t.get("version") if isinstance(t, dict) else getattr(t, "version", None)
-                t_cat = t.get("category") if isinstance(t, dict) else getattr(t, "category", "")
+                t_name = (
+                    t.get("name") if isinstance(t, dict) else getattr(t, "name", "")
+                )
+                t_ver = (
+                    t.get("version")
+                    if isinstance(t, dict)
+                    else getattr(t, "version", None)
+                )
+                t_cat = (
+                    t.get("category")
+                    if isinstance(t, dict)
+                    else getattr(t, "category", "")
+                )
                 v_str = f" {t_ver}" if t_ver else ""
                 tech_strs.append(f"`{t_name}{v_str}` ({t_cat})")
             lines.append("- **Technologies**: " + ", ".join(tech_strs))
@@ -346,10 +366,22 @@ def md_detect(d: dict) -> str:
         lines.append("")
         for w in wafs:
             name = w.get("name") if isinstance(w, dict) else getattr(w, "name", "")
-            vendor = w.get("vendor") if isinstance(w, dict) else getattr(w, "vendor", "")
-            conf = w.get("confidence") if isinstance(w, dict) else getattr(w, "confidence", "high")
-            evid = w.get("evidence") if isinstance(w, dict) else getattr(w, "evidence", "")
-            blocked = w.get("blocked") if isinstance(w, dict) else getattr(w, "blocked", False)
+            vendor = (
+                w.get("vendor") if isinstance(w, dict) else getattr(w, "vendor", "")
+            )
+            conf = (
+                w.get("confidence")
+                if isinstance(w, dict)
+                else getattr(w, "confidence", "high")
+            )
+            evid = (
+                w.get("evidence") if isinstance(w, dict) else getattr(w, "evidence", "")
+            )
+            blocked = (
+                w.get("blocked")
+                if isinstance(w, dict)
+                else getattr(w, "blocked", False)
+            )
             block_tag = " `[BLOCKED REQUEST]`" if blocked else ""
             vendor_str = f" ({vendor})" if vendor else ""
             lines.append(f"- **{name}**{vendor_str} — `{conf}` confidence{block_tag}")
@@ -370,10 +402,20 @@ def md_detect(d: dict) -> str:
         lines.append("| --- | --- | --- | --- | --- |")
         for t in techs:
             name = t.get("name") if isinstance(t, dict) else getattr(t, "name", "")
-            cat = t.get("category") if isinstance(t, dict) else getattr(t, "category", "")
-            ver = (t.get("version") if isinstance(t, dict) else getattr(t, "version", None)) or "—"
-            conf = t.get("confidence") if isinstance(t, dict) else getattr(t, "confidence", "high")
-            evid = (t.get("evidence") if isinstance(t, dict) else getattr(t, "evidence", "")) or "—"
+            cat = (
+                t.get("category") if isinstance(t, dict) else getattr(t, "category", "")
+            )
+            ver = (
+                t.get("version") if isinstance(t, dict) else getattr(t, "version", None)
+            ) or "—"
+            conf = (
+                t.get("confidence")
+                if isinstance(t, dict)
+                else getattr(t, "confidence", "high")
+            )
+            evid = (
+                t.get("evidence") if isinstance(t, dict) else getattr(t, "evidence", "")
+            ) or "—"
             lines.append(f"| **{name}** | `{cat}` | {ver} | {conf} | `{evid}` |")
     else:
         lines.append("## Technologies")
@@ -399,7 +441,15 @@ def md_passive(d: dict) -> str:
         waf_strs = []
         for w in wafs:
             w_name = w.get("name") if isinstance(w, dict) else getattr(w, "name", "")
-            w_blk = " (BLOCKED)" if (w.get("blocked") if isinstance(w, dict) else getattr(w, "blocked", False)) else ""
+            w_blk = (
+                " (BLOCKED)"
+                if (
+                    w.get("blocked")
+                    if isinstance(w, dict)
+                    else getattr(w, "blocked", False)
+                )
+                else ""
+            )
             waf_strs.append(f"`{w_name}{w_blk}`")
         lines.append(f"**WAF / Shield**: {', '.join(waf_strs)}")
 
@@ -408,8 +458,12 @@ def md_passive(d: dict) -> str:
         tech_strs = []
         for t in techs:
             t_name = t.get("name") if isinstance(t, dict) else getattr(t, "name", "")
-            t_ver = t.get("version") if isinstance(t, dict) else getattr(t, "version", None)
-            t_cat = t.get("category") if isinstance(t, dict) else getattr(t, "category", "")
+            t_ver = (
+                t.get("version") if isinstance(t, dict) else getattr(t, "version", None)
+            )
+            t_cat = (
+                t.get("category") if isinstance(t, dict) else getattr(t, "category", "")
+            )
             v_str = f" {t_ver}" if t_ver else ""
             tech_strs.append(f"`{t_name}{v_str}` ({t_cat})")
         lines.append(f"**Technologies**: {', '.join(tech_strs)}")
@@ -425,10 +479,16 @@ def md_passive(d: dict) -> str:
         lines.append("| Type | Name | Value | TTL |")
         lines.append("| --- | --- | --- | --- |")
         for r in dns_recs:
-            rtype = r.get("record_type") if isinstance(r, dict) else getattr(r, "record_type", "")
+            rtype = (
+                r.get("record_type")
+                if isinstance(r, dict)
+                else getattr(r, "record_type", "")
+            )
             name = r.get("name") if isinstance(r, dict) else getattr(r, "name", "")
             val = r.get("value") if isinstance(r, dict) else getattr(r, "value", "")
-            ttl = (r.get("ttl") if isinstance(r, dict) else getattr(r, "ttl", None)) or "—"
+            ttl = (
+                r.get("ttl") if isinstance(r, dict) else getattr(r, "ttl", None)
+            ) or "—"
             lines.append(f"| `{rtype}` | `{name}` | `{val}` | {ttl} |")
         lines.append("")
 
@@ -457,9 +517,21 @@ def md_passive(d: dict) -> str:
 
     # Security.txt
     sec_txt = d.get("security_txt") or {}
-    if sec_txt and (sec_txt.get("present") if isinstance(sec_txt, dict) else getattr(sec_txt, "present", False)):
-        contacts = (sec_txt.get("contact") if isinstance(sec_txt, dict) else getattr(sec_txt, "contact", [])) or []
-        expires = sec_txt.get("expires") if isinstance(sec_txt, dict) else getattr(sec_txt, "expires", None)
+    if sec_txt and (
+        sec_txt.get("present")
+        if isinstance(sec_txt, dict)
+        else getattr(sec_txt, "present", False)
+    ):
+        contacts = (
+            sec_txt.get("contact")
+            if isinstance(sec_txt, dict)
+            else getattr(sec_txt, "contact", [])
+        ) or []
+        expires = (
+            sec_txt.get("expires")
+            if isinstance(sec_txt, dict)
+            else getattr(sec_txt, "expires", None)
+        )
         lines.append("## security.txt (RFC 9116)")
         lines.append("")
         lines.append(f"- **URL**: `{sec_txt.get('url')}`")
@@ -490,9 +562,7 @@ def md_sqli(d: dict) -> str:
     lines.append(
         f"- **Parameters Tested**: {', '.join(f'`{p}`' for p in tested) if tested else '_none_'}"
     )
-    lines.append(
-        f"- **Vulnerabilities / Anomalies Detected**: `{len(vulns)}`"
-    )
+    lines.append(f"- **Vulnerabilities / Anomalies Detected**: `{len(vulns)}`")
     lines.append("")
 
     if not vulns:
@@ -508,9 +578,7 @@ def md_sqli(d: dict) -> str:
     for v in vulns:
         param = v.get("param") if isinstance(v, dict) else getattr(v, "param", "")
         p_type = (
-            v.get("param_type")
-            if isinstance(v, dict)
-            else getattr(v, "param_type", "")
+            v.get("param_type") if isinstance(v, dict) else getattr(v, "param_type", "")
         )
         inj_type = (
             v.get("injection_type")
@@ -523,13 +591,9 @@ def md_sqli(d: dict) -> str:
             else getattr(v, "confidence", "potential")
         )
         engine = (
-            v.get("db_engine")
-            if isinstance(v, dict)
-            else getattr(v, "db_engine", None)
+            v.get("db_engine") if isinstance(v, dict) else getattr(v, "db_engine", None)
         )
-        payload = (
-            v.get("payload") if isinstance(v, dict) else getattr(v, "payload", "")
-        )
+        payload = v.get("payload") if isinstance(v, dict) else getattr(v, "payload", "")
         base_st = (
             v.get("baseline_status")
             if isinstance(v, dict)
@@ -544,9 +608,7 @@ def md_sqli(d: dict) -> str:
             v.get("evidence") if isinstance(v, dict) else getattr(v, "evidence", "")
         )
         suggestion = (
-            v.get("suggestion")
-            if isinstance(v, dict)
-            else getattr(v, "suggestion", "")
+            v.get("suggestion") if isinstance(v, dict) else getattr(v, "suggestion", "")
         )
 
         badge = f"**[{conf.upper()}]**"
@@ -555,9 +617,77 @@ def md_sqli(d: dict) -> str:
         lines.append(f"- **Technique**: `{inj_type}`")
         if payload:
             lines.append(f"- **Probe Payload**: `{payload}`")
-        lines.append(
-            f"- **Status Code**: `{base_st}` (baseline) → `{pay_st}` (probe)"
+        lines.append(f"- **Status Code**: `{base_st}` (baseline) → `{pay_st}` (probe)")
+        if evidence:
+            lines.append(f"- **Evidence**: {evidence}")
+        if suggestion:
+            lines.append(f"- **Remediation**: {suggestion}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def md_xss(d: dict) -> str:
+    target = d.get("target") or ""
+    tested = d.get("tested_params") or []
+    reflections = d.get("reflections") or []
+
+    lines = [f"# XSS & Reflection Analysis: `{target}`", ""]
+    lines.append(
+        f"- **Parameters Tested**: {', '.join(f'`{p}`' for p in tested) if tested else '_none_'}"
+    )
+    lines.append(f"- **Reflections Detected**: `{len(reflections)}`")
+    lines.append("")
+
+    if not reflections:
+        lines.append("## Results")
+        lines.append("")
+        lines.append("_No parameter reflections or XSS encoding anomalies detected._")
+        return "\n".join(lines)
+
+    lines.append("## Reflection & Encoding Audit")
+    lines.append("")
+    for r in reflections:
+        param = r.get("param") if isinstance(r, dict) else getattr(r, "param", "")
+        p_type = (
+            r.get("param_type") if isinstance(r, dict) else getattr(r, "param_type", "")
         )
+        ctx = r.get("context") if isinstance(r, dict) else getattr(r, "context", "")
+        conf = (
+            r.get("confidence")
+            if isinstance(r, dict)
+            else getattr(r, "confidence", "low")
+        )
+        unencoded = (
+            r.get("unencoded_chars")
+            if isinstance(r, dict)
+            else getattr(r, "unencoded_chars", [])
+        )
+        encoded = (
+            r.get("encoded_chars")
+            if isinstance(r, dict)
+            else getattr(r, "encoded_chars", [])
+        )
+        snippet = r.get("snippet") if isinstance(r, dict) else getattr(r, "snippet", "")
+        evidence = (
+            r.get("evidence") if isinstance(r, dict) else getattr(r, "evidence", "")
+        )
+        suggestion = (
+            r.get("suggestion") if isinstance(r, dict) else getattr(r, "suggestion", "")
+        )
+
+        badge = f"**[{conf.upper()}]**"
+        lines.append(f"### {badge} Parameter `{param}` ({p_type}) in `{ctx}`")
+        if unencoded:
+            lines.append(
+                f"- **Unencoded Characters**: {', '.join(f'`{c}`' for c in unencoded)}"
+            )
+        if encoded:
+            lines.append(
+                f"- **Encoded Entities**: {', '.join(f'`{c}`' for c in encoded)}"
+            )
+        if snippet:
+            lines.append(f"- **Reflection Site**:\n  ```html\n  {snippet}\n  ```")
         if evidence:
             lines.append(f"- **Evidence**: {evidence}")
         if suggestion:

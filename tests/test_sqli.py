@@ -83,7 +83,9 @@ def test_sqli_quote_balancing_detection(monkeypatch):
             if p.name == "user":
                 # Single quote causes error / change
                 if p.value == "alice'":
-                    return Response(status_code=500, body="Internal Server Error", body_len=21)
+                    return Response(
+                        status_code=500, body="Internal Server Error", body_len=21
+                    )
                 # Two single quotes balances the string and restores page
                 elif p.value == "alice''":
                     return baseline_resp
@@ -118,7 +120,9 @@ def test_sqli_arithmetic_evaluation(monkeypatch):
                 if p.value in ("5", "6-1", "5+0"):
                     return resp_5
                 else:
-                    return Response(status_code=404, body="Product not found", body_len=17)
+                    return Response(
+                        status_code=404, body="Product not found", body_len=17
+                    )
         return resp_5
 
     monkeypatch.setattr("darco.sqli._send", mock_send)
@@ -150,7 +154,11 @@ def test_sqli_boolean_differential(monkeypatch):
                 if "AND '1'='1" in p.value:
                     return baseline_resp
                 elif "AND '1'='2" in p.value:
-                    return Response(status_code=200, body="<html><body>No results found</body></html>", body_len=43)
+                    return Response(
+                        status_code=200,
+                        body="<html><body>No results found</body></html>",
+                        body_len=43,
+                    )
         return baseline_resp
 
     monkeypatch.setattr("darco.sqli._send", mock_send)

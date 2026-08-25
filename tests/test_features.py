@@ -111,7 +111,17 @@ def test_cli_default_output_is_markdown(app, tmp_path):
 
 def test_cli_oneshot_send_without_workspace(app, tmp_path):
     rr = run(
-        ["send", "-u", f"{app}/echo", "-X", "POST", "--data", "a=1", "--header", "X-Probe: 9"],
+        [
+            "send",
+            "-u",
+            f"{app}/echo",
+            "-X",
+            "POST",
+            "--data",
+            "a=1",
+            "--header",
+            "X-Probe: 9",
+        ],
         tmp_path,
         json_only=True,
     )

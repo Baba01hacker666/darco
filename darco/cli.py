@@ -931,7 +931,9 @@ def analyze_cmd(ctx, record_id, save):
 @click.option("--from", "from_id", default=None, help="Stored record id to inspect")
 @click.option("--waf-only", is_flag=True, help="Only detect WAF / CDN shields")
 @click.option("--tech-only", is_flag=True, help="Only detect web technologies")
-@click.option("--insecure", is_flag=True, default=False, help="Disable TLS verification")
+@click.option(
+    "--insecure", is_flag=True, default=False, help="Disable TLS verification"
+)
 @click.pass_context
 def detect_cmd(ctx, target, url, from_id, waf_only, tech_only, insecure):
     """Detect WAF shields and web technologies from headers, cookies, and body."""
@@ -968,7 +970,9 @@ def detect_cmd(ctx, target, url, from_id, waf_only, tech_only, insecure):
                     except DarcoError:
                         pass
         if not url:
-            raise DarcoError("provide a target URL (-u <url>) or record ID (--from <id>)")
+            raise DarcoError(
+                "provide a target URL (-u <url>) or record ID (--from <id>)"
+            )
         if not url.startswith(("http://", "https://")):
             url = "http://" + url
         req = Request(method="GET", url=url, verify=not insecure)
@@ -990,7 +994,9 @@ def detect_cmd(ctx, target, url, from_id, waf_only, tech_only, insecure):
 @click.argument("target", required=False, default=None)
 @click.option("-u", "--url", default=None, help="Target URL to inspect for WAF")
 @click.option("--from", "from_id", default=None, help="Stored record id to inspect")
-@click.option("--insecure", is_flag=True, default=False, help="Disable TLS verification")
+@click.option(
+    "--insecure", is_flag=True, default=False, help="Disable TLS verification"
+)
 @click.pass_context
 def waf_cmd(ctx, target, url, from_id, insecure):
     """Detect WAF / CDN shields protecting the target."""
@@ -1007,9 +1013,13 @@ def waf_cmd(ctx, target, url, from_id, insecure):
 
 @cli.command("tech")
 @click.argument("target", required=False, default=None)
-@click.option("-u", "--url", default=None, help="Target URL to fingerprint technologies")
+@click.option(
+    "-u", "--url", default=None, help="Target URL to fingerprint technologies"
+)
 @click.option("--from", "from_id", default=None, help="Stored record id to inspect")
-@click.option("--insecure", is_flag=True, default=False, help="Disable TLS verification")
+@click.option(
+    "--insecure", is_flag=True, default=False, help="Disable TLS verification"
+)
 @click.pass_context
 def tech_cmd(ctx, target, url, from_id, insecure):
     """Detect web servers, frameworks, CMS, and frontend libraries."""
@@ -1033,14 +1043,10 @@ def tech_cmd(ctx, target, url, from_id, insecure):
     is_flag=True,
     help="Skip Certificate Transparency subdomain enumeration",
 )
-@click.option(
-    "--no-dns", is_flag=True, help="Skip DNS and email posture queries"
-)
+@click.option("--no-dns", is_flag=True, help="Skip DNS and email posture queries")
 @click.option("--no-sec-txt", is_flag=True, help="Skip security.txt inspection")
 @click.option("--no-headers", is_flag=True, help="Skip security headers audit")
-@click.option(
-    "--save", is_flag=True, help="Save findings to workspace findings.json"
-)
+@click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option(
     "--timeout",
     type=float,
@@ -1115,14 +1121,10 @@ def passive_cmd(
     is_flag=True,
     help="Skip Certificate Transparency subdomain enumeration",
 )
-@click.option(
-    "--no-dns", is_flag=True, help="Skip DNS and email posture queries"
-)
+@click.option("--no-dns", is_flag=True, help="Skip DNS and email posture queries")
 @click.option("--no-sec-txt", is_flag=True, help="Skip security.txt inspection")
 @click.option("--no-headers", is_flag=True, help="Skip security headers audit")
-@click.option(
-    "--save", is_flag=True, help="Save findings to workspace findings.json"
-)
+@click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option("--timeout", type=float, default=8.0)
 @click.option("--insecure", is_flag=True, default=False)
 @click.pass_context
@@ -1201,12 +1203,8 @@ def info_cmd(
     help="Target URL (e.g. http://example.com/item?id=1)",
 )
 @click.option("--from", "from_id", default=None, help="Stored record ID to test")
-@click.option(
-    "-p", "--param", default=None, help="Specific parameter name to test"
-)
-@click.option(
-    "--save", is_flag=True, help="Save findings to workspace findings.json"
-)
+@click.option("-p", "--param", default=None, help="Specific parameter name to test")
+@click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option(
     "--insecure", is_flag=True, default=False, help="Disable TLS verification"
 )
@@ -1293,16 +1291,10 @@ def sql_cmd(ctx, target, url, from_id, param, save, insecure):
 
 @cli.command("sqli")
 @click.argument("target", required=False, default=None)
-@click.option(
-    "-u", "--url", default=None, help="Target URL to test for SQL injection"
-)
+@click.option("-u", "--url", default=None, help="Target URL to test for SQL injection")
 @click.option("--from", "from_id", default=None, help="Stored record ID to test")
-@click.option(
-    "-p", "--param", default=None, help="Specific parameter name to test"
-)
-@click.option(
-    "--save", is_flag=True, help="Save findings to workspace findings.json"
-)
+@click.option("-p", "--param", default=None, help="Specific parameter name to test")
+@click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option("--insecure", is_flag=True, default=False)
 @click.pass_context
 def sqli_cmd(ctx, target, url, from_id, param, save, insecure):
@@ -1313,6 +1305,159 @@ def sqli_cmd(ctx, target, url, from_id, param, save, insecure):
         url=url,
         from_id=from_id,
         param=param,
+        save=save,
+        insecure=insecure,
+    )
+
+
+# ------------------------------------------------------------------ xss & reflection testing
+@cli.command("xss")
+@click.argument("target", required=False, default=None)
+@click.option(
+    "-u",
+    "--url",
+    default=None,
+    help="Target URL (e.g. http://example.com/search?q=test)",
+)
+@click.option("--from", "from_id", default=None, help="Stored record ID to test")
+@click.option("-p", "--param", default=None, help="Specific parameter name to test")
+@click.option(
+    "-H",
+    "--header",
+    "headers",
+    multiple=True,
+    help="Add custom headers (e.g. -H 'Authorization: Bearer ...')",
+)
+@click.option(
+    "-C",
+    "--cookie",
+    "cookies",
+    multiple=True,
+    help="Add custom cookies (e.g. -C 'session=xyz')",
+)
+@click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
+@click.option(
+    "--insecure", is_flag=True, default=False, help="Disable TLS verification"
+)
+@click.pass_context
+def xss_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecure):
+    """XSS & reflection audit: probes inputs, classifies reflection contexts, and audits HTML encoding."""
+    from .models import Cookie, Finding, NameValue, Request
+    from .render import md_xss
+    from .xss import scan_xss
+
+    if target:
+        if target.isdigit() or (target.startswith("0") and len(target) == 4):
+            from_id = from_id or target
+        else:
+            url = url or target
+
+    base_req = None
+    session = None
+    ws = None
+
+    if from_id:
+        ws = _find_workspace(ctx)
+        record = ws.get_record(from_id)
+        base_req = record.request.model_copy(deep=True)
+        session = ws.load_session()
+    else:
+        if not url:
+            cfg = (ctx.obj or {}).get("config")
+            if cfg and cfg.target:
+                url = cfg.target
+            else:
+                ws = _find_workspace(ctx, require=False)
+                if ws:
+                    try:
+                        url = ws.load_config().target
+                    except DarcoError:
+                        pass
+        if not url:
+            raise DarcoError(
+                "provide a target URL with parameters: 'darco xss <url>' or -u <url> or --from <id>"
+            )
+        if not url.startswith(("http://", "https://")):
+            url = "http://" + url
+        split = urlsplit(url)
+        params = [
+            NameValue(name=k, value=v)
+            for k, v in parse_qsl(split.query, keep_blank_values=True)
+        ]
+        clean_url = url.split("?", 1)[0] if split.query else url
+        base_req = Request(
+            method="GET",
+            url=clean_url,
+            params=params,
+            verify=not insecure,
+            source="oneshot",
+        )
+        ws = _find_workspace(ctx, require=False)
+        session = ws.load_session() if ws else _one_shot_session()
+
+    # Append any user-provided headers or cookies
+    if headers:
+        for h in headers:
+            if ":" in h:
+                k, v = h.split(":", 1)
+                base_req.headers.append(
+                    NameValue(name=k.strip(), value=v.strip())
+                )
+    if cookies:
+        for c in cookies:
+            if "=" in c:
+                k, v = c.split("=", 1)
+                session.cookies.append(
+                    Cookie(name=k.strip(), value=v.strip())
+                )
+
+    result = scan_xss(base_req, session=session, param_filter=param)
+
+    if save:
+        ws = ws or _find_workspace(ctx, auto_create_target=base_req.url)
+        if ws:
+            findings = []
+            for r in result.reflections:
+                if r.confidence in ("confirmed", "high", "medium"):
+                    findings.append(
+                        Finding(
+                            id=f"xss-{r.param}-{r.context}",
+                            type=f"xss_{r.context}",
+                            severity=(
+                                "high"
+                                if r.confidence in ("confirmed", "high")
+                                else "medium"
+                            ),
+                            location=f"{base_req.method} {base_req.url} ({r.param})",
+                            evidence=r.evidence,
+                            suggestion=r.suggestion,
+                        )
+                    )
+            ws.add_findings(findings)
+
+    _emit(ctx, to_json(result), md_xss)
+
+
+@cli.command("reflect")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target URL to test for reflection")
+@click.option("--from", "from_id", default=None, help="Stored record ID to test")
+@click.option("-p", "--param", default=None, help="Specific parameter name to test")
+@click.option("-H", "--header", "headers", multiple=True)
+@click.option("-C", "--cookie", "cookies", multiple=True)
+@click.option("--save", is_flag=True)
+@click.option("--insecure", is_flag=True, default=False)
+@click.pass_context
+def reflect_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecure):
+    """Alias for XSS & reflection audit."""
+    ctx.invoke(
+        xss_cmd,
+        target=target,
+        url=url,
+        from_id=from_id,
+        param=param,
+        headers=headers,
+        cookies=cookies,
         save=save,
         insecure=insecure,
     )

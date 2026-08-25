@@ -37,7 +37,10 @@ def test_audit_security_headers_all_present():
     resp = Response(
         status_code=200,
         headers=[
-            NameValue(name="Strict-Transport-Security", value="max-age=31536000; includeSubDomains"),
+            NameValue(
+                name="Strict-Transport-Security",
+                value="max-age=31536000; includeSubDomains",
+            ),
             NameValue(name="Content-Security-Policy", value="default-src 'self'"),
             NameValue(name="X-Frame-Options", value="DENY"),
             NameValue(name="X-Content-Type-Options", value="nosniff"),
@@ -46,7 +49,9 @@ def test_audit_security_headers_all_present():
         ],
         url="https://secure.example.com",
     )
-    present, missing, findings = audit_security_headers(resp, "https://secure.example.com")
+    present, missing, findings = audit_security_headers(
+        resp, "https://secure.example.com"
+    )
     assert len(present) == 6
     assert len(missing) == 0
     assert len(findings) == 0
@@ -58,7 +63,9 @@ def test_audit_security_headers_missing():
         headers=[],
         url="https://insecure.example.com",
     )
-    present, missing, findings = audit_security_headers(resp, "https://insecure.example.com")
+    present, missing, findings = audit_security_headers(
+        resp, "https://insecure.example.com"
+    )
     assert len(present) == 0
     assert "Strict-Transport-Security" in missing
     assert "Content-Security-Policy" in missing

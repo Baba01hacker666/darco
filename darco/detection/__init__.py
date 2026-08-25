@@ -15,4 +15,10 @@ def detect_all(response: Response, request: Request | None = None) -> dict[str, 
     }
 
 
-__all__ = ["TechDetection", "WafDetection", "detect_all", "detect_technologies", "detect_waf"]
+__all__ = [
+    "TechDetection",
+    "WafDetection",
+    "detect_all",
+    "detect_technologies",
+    "detect_waf",
+]

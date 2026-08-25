@@ -97,14 +97,16 @@ async def enumerate_dns(
             try:
                 ips = socket.gethostbyname_ex(domain)[2]
                 for ip in ips:
-                    records.append(
-                        DnsRecord(record_type="A", name=domain, value=ip)
-                    )
+                    records.append(DnsRecord(record_type="A", name=domain, value=ip))
             except socket.gaierror:
                 pass
 
         # 3. Analyze SPF / DMARC / CAA Posture
-        txt_values = [r.value for r in records if r.record_type == "TXT" and r.name.lower() == domain.lower()]
+        txt_values = [
+            r.value
+            for r in records
+            if r.record_type == "TXT" and r.name.lower() == domain.lower()
+        ]
         spf_records = [v for v in txt_values if v.lower().startswith("v=spf1")]
 
         if not spf_records:
@@ -144,7 +146,9 @@ async def enumerate_dns(
                 )
 
         dmarc_values = [
-            r.value for r in records if r.record_type == "TXT" and "_dmarc" in r.name.lower()
+            r.value
+            for r in records
+            if r.record_type == "TXT" and "_dmarc" in r.name.lower()
         ]
         if not dmarc_values:
             findings.append(

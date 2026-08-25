@@ -16,7 +16,9 @@ async def enumerate_subdomains_crtsh(
 
     try:
         url = f"https://crt.sh/?q=%.{domain}&output=json"
-        resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        resp = await client.get(
+            url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        )
         if resp.status_code == 200:
             data = resp.json()
             for entry in data:

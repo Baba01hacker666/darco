@@ -18,7 +18,10 @@ DB_ERRORS: list[tuple[str, re.Pattern]] = [
     # MySQL / MariaDB
     ("MySQL", re.compile(r"You have an error in your SQL syntax", re.IGNORECASE)),
     ("MySQL", re.compile(r"Warning: mysql_", re.IGNORECASE)),
-    ("MySQL", re.compile(r"MySQL server version for the right syntax to use", re.IGNORECASE)),
+    (
+        "MySQL",
+        re.compile(r"MySQL server version for the right syntax to use", re.IGNORECASE),
+    ),
     ("MySQL", re.compile(r"valid MySQL result", re.IGNORECASE)),
     ("MySQL", re.compile(r"com\.mysql\.jdbc\.exceptions", re.IGNORECASE)),
     ("MySQL", re.compile(r"MySqlClient\.", re.IGNORECASE)),
@@ -29,15 +32,28 @@ DB_ERRORS: list[tuple[str, re.Pattern]] = [
     ("PostgreSQL", re.compile(r"pg_query\(\): Query failed", re.IGNORECASE)),
     ("PostgreSQL", re.compile(r"PG::SyntaxError", re.IGNORECASE)),
     # Microsoft SQL Server (MSSQL)
-    ("MSSQL", re.compile(r"Unclosed quotation mark before the character string", re.IGNORECASE)),
+    (
+        "MSSQL",
+        re.compile(
+            r"Unclosed quotation mark before the character string", re.IGNORECASE
+        ),
+    ),
     ("MSSQL", re.compile(r"Microsoft OLE DB Provider for SQL Server", re.IGNORECASE)),
     ("MSSQL", re.compile(r"\[Microsoft\]\[ODBC SQL Server Driver\]", re.IGNORECASE)),
     ("MSSQL", re.compile(r"Line \d+: Incorrect syntax near", re.IGNORECASE)),
     ("MSSQL", re.compile(r"System\.Data\.SqlClient\.SqlException", re.IGNORECASE)),
     # Oracle
-    ("Oracle", re.compile(r"ORA-00933:\s*SQL command not properly ended", re.IGNORECASE)),
+    (
+        "Oracle",
+        re.compile(r"ORA-00933:\s*SQL command not properly ended", re.IGNORECASE),
+    ),
     ("Oracle", re.compile(r"ORA-00936:\s*missing expression", re.IGNORECASE)),
-    ("Oracle", re.compile(r"ORA-01756:\s*quoted string not properly terminated", re.IGNORECASE)),
+    (
+        "Oracle",
+        re.compile(
+            r"ORA-01756:\s*quoted string not properly terminated", re.IGNORECASE
+        ),
+    ),
     ("Oracle", re.compile(r"Oracle error", re.IGNORECASE)),
     ("Oracle", re.compile(r"quoted string not properly terminated", re.IGNORECASE)),
     # SQLite
@@ -47,7 +63,10 @@ DB_ERRORS: list[tuple[str, re.Pattern]] = [
     ("SQLite", re.compile(r"no such table:", re.IGNORECASE)),
     # Microsoft Access / Jet
     ("MS Access", re.compile(r"Syntax error in query expression", re.IGNORECASE)),
-    ("MS Access", re.compile(r"Data type mismatch in criteria expression", re.IGNORECASE)),
+    (
+        "MS Access",
+        re.compile(r"Data type mismatch in criteria expression", re.IGNORECASE),
+    ),
     ("MS Access", re.compile(r"Microsoft Access Database Engine", re.IGNORECASE)),
 ]
 
@@ -152,7 +171,9 @@ def scan_sqli(
     base_len = baseline_response.body_len
 
     # 2. Extract testable parameters
-    params_to_test: list[tuple[str, str, str]] = []  # (param_type, param_name, original_val)
+    params_to_test: list[
+        tuple[str, str, str]
+    ] = []  # (param_type, param_name, original_val)
 
     for p in request.params:
         if param_filter is None or p.name == param_filter:
@@ -262,7 +283,9 @@ def scan_sqli(
                 if sim >= 0.95:
                     # Negative control test: evaluate (num_val + 10) to confirm it is not just static page
                     control_expr = f"{num_val + 99999}"
-                    req_ctrl = _clone_and_mutate_param(request, p_type, p_name, control_expr)
+                    req_ctrl = _clone_and_mutate_param(
+                        request, p_type, p_name, control_expr
+                    )
                     resp_ctrl = _send(req_ctrl, session)
 
                     ctrl_differs = (

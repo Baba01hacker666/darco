@@ -190,7 +190,9 @@ async def discover(
     sitemap.forms = forms
     sitemap.js_files = sorted(js_files.values(), key=lambda j: j.url)
     sitemap.signals = signals
-    sitemap.technologies = sorted(tech_by_name.values(), key=lambda t: (t.category, t.name))
+    sitemap.technologies = sorted(
+        tech_by_name.values(), key=lambda t: (t.category, t.name)
+    )
     sitemap.wafs = list(waf_by_name.values())
     sitemap.stats = {
         "visited": len(visited),
@@ -338,7 +340,9 @@ async def _process(
 
     darco_resp = _response_from_httpx(resp)
     for tech in detect_technologies(darco_resp, Request(method="GET", url=url)):
-        if tech.name not in tech_by_name or (not tech_by_name[tech.name].version and tech.version):
+        if tech.name not in tech_by_name or (
+            not tech_by_name[tech.name].version and tech.version
+        ):
             tech_by_name[tech.name] = tech
     for waf in detect_waf(darco_resp, Request(method="GET", url=url)):
         if waf.name not in waf_by_name:

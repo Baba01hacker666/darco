@@ -16,7 +16,9 @@ class BodyType(str, enum.Enum):
 class DarcoModel(BaseModel):
     """Base class providing cross-version compatibility for Pydantic v1 and v2."""
 
-    def model_copy(self, *, deep: bool = False, update: dict[str, Any] | None = None) -> Any:
+    def model_copy(
+        self, *, deep: bool = False, update: dict[str, Any] | None = None
+    ) -> Any:
         if hasattr(BaseModel, "model_copy"):
             return super().model_copy(deep=deep, update=update)
         return self.copy(deep=deep, update=update)
@@ -238,6 +240,25 @@ class SqliScanResult(DarcoModel):
     target: str
     tested_params: list[str] = Field(default_factory=list)
     vulnerabilities: list[SqliFinding] = Field(default_factory=list)
+
+
+class XssReflection(DarcoModel):
+    param: str
+    param_type: str  # "query", "form", "json", "header"
+    context: str  # "html_body", "html_attribute", "script_context", "header", "unknown"
+    confidence: str  # "confirmed", "high", "medium", "low"
+    payload: str
+    unencoded_chars: list[str] = Field(default_factory=list)
+    encoded_chars: list[str] = Field(default_factory=list)
+    snippet: str = ""
+    evidence: str = ""
+    suggestion: str = ""
+
+
+class XssScanResult(DarcoModel):
+    target: str
+    tested_params: list[str] = Field(default_factory=list)
+    reflections: list[XssReflection] = Field(default_factory=list)
 
 
 def to_json(model: BaseModel) -> dict[str, Any]:
