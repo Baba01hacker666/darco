@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import asyncio
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -14,6 +12,57 @@ from .models import (
     JsAnalysisReport,
     JsSecret,
 )
+
+CDN_DOMAINS = {
+    "cdnjs.cloudflare.com",
+    "cdn.jsdelivr.net",
+    "cdn.jsdelivr.com",
+    "unpkg.com",
+    "ajax.googleapis.com",
+    "code.jquery.com",
+    "stackpath.bootstrapcdn.com",
+    "maxcdn.bootstrapcdn.com",
+    "cdn.tailwindcss.com",
+    "use.fontawesome.com",
+    "kit.fontawesome.com",
+    "cdn.ampproject.org",
+    "googletagmanager.com",
+    "google-analytics.com",
+    "analytics.google.com",
+    "connect.facebook.net",
+    "static.hotjar.com",
+    "script.hotjar.com",
+    "clarity.ms",
+    "cdn.segment.com",
+    "widget.intercom.io",
+    "challenges.cloudflare.com",
+    "recaptcha.net",
+    "hcaptcha.com",
+}
+
+
+def is_cdn_or_vendor_script(script_url: str) -> bool:
+    """Check if a script URL belongs to a 3rd-party CDN, tracker, or external library vendor."""
+    u = urlsplit(script_url)
+    hostname = (u.hostname or "").lower()
+
+    for cdn in CDN_DOMAINS:
+        if hostname == cdn or hostname.endswith("." + cdn):
+            return True
+
+    path_lower = u.path.lower()
+    return any(
+        tracker in hostname or tracker in path_lower
+        for tracker in (
+            "google-analytics",
+            "googletagmanager",
+            "facebook.net",
+            "hotjar",
+            "clarity.ms",
+            "hcaptcha",
+            "recaptcha",
+        )
+    )
 
 
 def analyze_local_js(file_path: str) -> JsAnalysisReport:
@@ -45,6 +94,7 @@ async def analyze_target_js(
     url: str,
     *,
     max_chunks: int = 50,
+    ignore_cdn: bool = True,
     timeout: float = 10.0,
     verify: bool = True,
     headers: dict[str, str] | None = None,
@@ -84,6 +134,8 @@ async def analyze_target_js(
             src = tag.get("src")
             if src:
                 resolved = urljoin(base_url, src)
+                if ignore_cdn and is_cdn_or_vendor_script(resolved):
+                    continue
                 if resolved not in fetched_script_urls:
                     script_urls_to_fetch.append(resolved)
             else:
@@ -141,6 +193,8 @@ async def analyze_target_js(
         chunk_urls_to_fetch = []
         for c in all_chunks_discovered:
             c_url = urljoin(base_url, c)
+            if ignore_cdn and is_cdn_or_vendor_script(c_url):
+                continue
             if (
                 c_url not in fetched_script_urls
                 and len(chunk_urls_to_fetch) < max_chunks

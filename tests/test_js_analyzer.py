@@ -116,6 +116,8 @@ class JsMockHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"""
             <html>
             <head>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+                <script src="https://www.google-analytics.com/analytics.js"></script>
                 <script src="/static/app.bundle.js"></script>
                 <script>
                     const localApi = "/api/internal/config";
@@ -150,9 +152,10 @@ def js_server():
 
 @pytest.mark.anyio
 async def test_analyze_target_js(js_server):
-    report = await analyze_target_js(js_server)
+    report = await analyze_target_js(js_server, ignore_cdn=True)
     assert report.target == js_server
-    assert report.js_files_analyzed >= 2
+    # Only 2 scripts analyzed (inline script + app.bundle.js), CDN scripts ignored
+    assert report.js_files_analyzed == 2
     assert len(report.endpoints) > 0
     assert len(report.secrets) > 0
 
@@ -162,6 +165,7 @@ def test_cli_js_command(js_server, tmp_path):
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert data["target"] == js_server
+    assert data["js_files_analyzed"] == 2
     assert len(data["endpoints"]) > 0
     assert len(data["secrets"]) > 0
 
