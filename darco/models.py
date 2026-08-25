@@ -295,6 +295,33 @@ class UploadAuditResult(DarcoModel):
     findings: list[UploadFinding] = Field(default_factory=list)
 
 
+class ApiEndpoint(DarcoModel):
+    path: str
+    full_url: str = ""
+    method: str = "GET"  # "GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "UNKNOWN"
+    params: list[str] = Field(default_factory=list)
+    source_js: str = ""
+    is_graphql: bool = False
+    context_snippet: str = ""
+
+
+class JsSecret(DarcoModel):
+    type: str  # "api_key", "jwt_token", "bearer_token", "firebase", "aws_key", "internal_url"
+    value: str
+    source_js: str = ""
+    evidence: str = ""
+
+
+class JsAnalysisReport(DarcoModel):
+    target: str
+    js_files_analyzed: int = 0
+    endpoints: list[ApiEndpoint] = Field(default_factory=list)
+    graphql_endpoints: list[str] = Field(default_factory=list)
+    secrets: list[JsSecret] = Field(default_factory=list)
+    chunks_discovered: list[str] = Field(default_factory=list)
+    findings: list[Finding] = Field(default_factory=list)
+
+
 def to_json(model: BaseModel) -> dict[str, Any]:
     if hasattr(model, "model_dump"):
         return model.model_dump(mode="json")

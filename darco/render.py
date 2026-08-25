@@ -941,3 +941,84 @@ def md_upload(d: dict) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def md_js(d: dict) -> str:
+    target = d.get("target") or ""
+    scripts = d.get("js_files_analyzed", 0)
+    endpoints = d.get("endpoints") or []
+    gql = d.get("graphql_endpoints") or []
+    secrets = d.get("secrets") or []
+    chunks = d.get("chunks_discovered") or []
+    findings = d.get("findings") or []
+
+    lines = [f"# JavaScript API & Static Analysis: `{target}`", ""]
+    lines.append(f"- **JS Files & Bundles Analyzed**: `{scripts}`")
+    lines.append(f"- **Discovered API Endpoints**: `{len(endpoints)}`")
+    lines.append(f"- **GraphQL Endpoints**: `{len(gql)}`")
+    lines.append(f"- **Discovered Webpack / SPA Chunks**: `{len(chunks)}`")
+    lines.append(f"- **Exposed Secrets / Tokens**: `{len(secrets)}`")
+    lines.append(f"- **Security Findings**: `{len(findings)}`")
+    lines.append("")
+
+    # Exposed Secrets
+    if secrets:
+        lines.append(f"## 🔑 Exposed Secrets & API Tokens ({len(secrets)})")
+        lines.append("")
+        for s in secrets:
+            s_type = s.get("type") if isinstance(s, dict) else getattr(s, "type", "")
+            val = s.get("value") if isinstance(s, dict) else getattr(s, "value", "")
+            src = (
+                s.get("source_js")
+                if isinstance(s, dict)
+                else getattr(s, "source_js", "")
+            )
+            lines.append(f"- **[{s_type.upper()}]** `{val}` (in `{src}`)")
+        lines.append("")
+
+    # Discovered API Endpoints
+    if endpoints:
+        lines.append(f"## 🌐 Discovered API Routes & Endpoints ({len(endpoints)})")
+        lines.append("")
+        lines.append(
+            "| Method | Path / Endpoint | Query / Body Params | Source Bundle |"
+        )
+        lines.append("| --- | --- | --- | --- |")
+        for ep in endpoints:
+            method = (
+                ep.get("method")
+                if isinstance(ep, dict)
+                else getattr(ep, "method", "GET")
+            )
+            path = ep.get("path") if isinstance(ep, dict) else getattr(ep, "path", "")
+            params = (
+                ep.get("params") if isinstance(ep, dict) else getattr(ep, "params", [])
+            )
+            src = (
+                ep.get("source_js")
+                if isinstance(ep, dict)
+                else getattr(ep, "source_js", "")
+            )
+            params_str = ", ".join(f"`{p}`" for p in params) if params else "_none_"
+            lines.append(f"| `{method}` | `{path}` | {params_str} | `{src}` |")
+        lines.append("")
+
+    # Discovered Webpack Chunks
+    if chunks:
+        lines.append(
+            f"## 📦 Discovered Dynamic Bundles & Webpack Chunks ({len(chunks)})"
+        )
+        lines.append("")
+        for c in chunks:
+            lines.append(f"- `{c}`")
+        lines.append("")
+
+    # General Findings
+    if findings:
+        lines.append(f"## Security Signals & Findings ({len(findings)})")
+        lines.append("")
+        for raw in findings:
+            f = Finding.model_validate(raw) if isinstance(raw, dict) else raw
+            lines.append(_md_finding(f))
+
+    return "\n".join(lines)
