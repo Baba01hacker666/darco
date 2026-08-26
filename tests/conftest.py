@@ -82,6 +82,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
 <a href="/debug?enabled=false">debug off</a>
 <a href="/captcha">captcha</a>
 <a href="/error">error</a>
+<a href="/redirect?url=/login">next page</a>
+<a href="/file?path=report.pdf">download report</a>
 <script src="/js/app.js"></script>
 </body></html>""",
             )
@@ -130,6 +132,49 @@ const ws = new WebSocket('/ws/events');""",
             )
         elif path == "/backup":
             self._send(200, "backup data")
+        elif path == "/redirect":
+            dest = qs.get("url", [""])[0]
+            if dest.startswith(("http://", "https://", "//")):
+                self._send(302, "", headers=[("Location", dest)])
+            else:
+                self._send(302, "", headers=[("Location", "/")])
+        elif path == "/meta-refresh":
+            dest = qs.get("url", [""])[0]
+            if dest.startswith(("http://", "https://", "//")):
+                self._send(
+                    200,
+                    f'<html><head><meta http-equiv="refresh" content="0; url={dest}">'
+                    "</head><body>redirecting...</body></html>",
+                )
+            else:
+                self._send(200, "<html><body>no redirect</body></html>")
+        elif path == "/file":
+            p = qs.get("path", [""])[0]
+            depth = 0
+            escaped = False
+            for seg in p.replace("\\", "/").split("/"):
+                if seg == "..":
+                    depth -= 1
+                    if depth < 0:
+                        escaped = True
+                elif seg and seg != ".":
+                    depth += 1
+            if escaped:
+                if "win.ini" in p.lower():
+                    self._send(
+                        200,
+                        "; for 16-bit app support\n[fonts]\n[extensions]\n",
+                        ctype="text/plain",
+                    )
+                else:
+                    self._send(
+                        200,
+                        "root:x:0:0:root:/root:/bin/bash\n"
+                        "daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n",
+                        ctype="text/plain",
+                    )
+            else:
+                self._send(200, "file listing: report.pdf notes.txt", ctype="text/plain")
         elif path == "/csrf":
             self._send(
                 200,

@@ -324,6 +324,8 @@ class AutoScanReport(DarcoModel):
     sqli_vulnerabilities: list[SqliFinding] = Field(default_factory=list)
     xss_reflections: list[XssReflection] = Field(default_factory=list)
     upload_findings: list[UploadFinding] = Field(default_factory=list)
+    redirect_findings: list[RedirectFinding] = Field(default_factory=list)
+    traversal_findings: list[TraversalFinding] = Field(default_factory=list)
     login_bypasses: list[LoginBypassFinding] = Field(default_factory=list)
     admin_panels: list[AdminPanel] = Field(default_factory=list)
     technologies: list[TechDetection] = Field(default_factory=list)
@@ -350,6 +352,41 @@ class UploadAuditResult(DarcoModel):
     tests_run: int = 0
     accepted_formats: list[str] = Field(default_factory=list)
     findings: list[UploadFinding] = Field(default_factory=list)
+
+
+class RedirectFinding(DarcoModel):
+    param: str
+    param_type: str  # "query", "form", "json"
+    redirect_type: str  # "location_header", "meta_refresh", "js_location"
+    confidence: str  # "confirmed", "high", "medium"
+    payload: str
+    redirect_to: str = ""
+    status_code: int = 0
+    evidence: str = ""
+    suggestion: str = ""
+
+
+class RedirectScanResult(DarcoModel):
+    target: str
+    tested_params: list[str] = Field(default_factory=list)
+    findings: list[RedirectFinding] = Field(default_factory=list)
+
+
+class TraversalFinding(DarcoModel):
+    param: str
+    param_type: str  # "query", "form", "json"
+    target_file: str  # "etc/passwd", "windows/win.ini"
+    confidence: str  # "confirmed"
+    payload: str
+    status_code: int = 0
+    evidence: str = ""
+    suggestion: str = ""
+
+
+class TraversalScanResult(DarcoModel):
+    target: str
+    tested_params: list[str] = Field(default_factory=list)
+    findings: list[TraversalFinding] = Field(default_factory=list)
 
 
 class ApiEndpoint(DarcoModel):

@@ -13,7 +13,9 @@ from .models import (
     Request,
     SiteMap,
 )
+from .redirect import scan_redirect
 from .sqli import scan_sqli
+from .traversal import scan_traversal
 from .upload import audit_file_upload
 from .workspace import Workspace
 from .xss import scan_xss
@@ -121,6 +123,8 @@ async def run_auto_scan(
     fuzz: bool = True,
     sqli: bool = True,
     xss: bool = True,
+    redirect: bool = True,
+    traversal: bool = True,
     upload: bool = True,
     default_creds: bool = True,
     include_state_fields: bool = False,
@@ -240,6 +244,54 @@ async def run_auto_scan(
                                 suggestion=r.suggestion,
                             )
                         )
+            except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+                pass
+
+        # D. Open Redirect Auditor
+        if redirect and (req.params or req.body_form or req.body_json):
+            try:
+                red_res = scan_redirect(
+                    req,
+                    session=session,
+                    include_state_fields=include_state_fields,
+                )
+                for rf in red_res.findings:
+                    report.redirect_findings.append(rf)
+                    all_new_findings.append(
+                        Finding(
+                            id=f"redirect-{rf.param}-{rf.redirect_type}",
+                            type=f"open_redirect_{rf.redirect_type}",
+                            severity=(
+                                "high" if rf.confidence == "confirmed" else "medium"
+                            ),
+                            location=f"{req.method} {req.url} ({rf.param})",
+                            evidence=rf.evidence,
+                            suggestion=rf.suggestion,
+                        )
+                    )
+            except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+                pass
+
+        # E. Path Traversal Auditor
+        if traversal and (req.params or req.body_form or req.body_json):
+            try:
+                trav_res = scan_traversal(
+                    req,
+                    session=session,
+                    include_state_fields=include_state_fields,
+                )
+                for tf in trav_res.findings:
+                    report.traversal_findings.append(tf)
+                    all_new_findings.append(
+                        Finding(
+                            id=f"traversal-{tf.param}-{tf.target_file}",
+                            type="path_traversal",
+                            severity="high",
+                            location=f"{req.method} {req.url} ({tf.param})",
+                            evidence=tf.evidence,
+                            suggestion=tf.suggestion,
+                        )
+                    )
             except (httpx.HTTPError, OSError, TimeoutError, ValueError):
                 pass
 

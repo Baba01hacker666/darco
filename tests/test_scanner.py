@@ -94,6 +94,44 @@ async def test_run_auto_scan(app, tmp_path):
         os.chdir(old_cwd)
 
 
+@pytest.mark.anyio
+async def test_run_auto_scan_redirect_and_traversal(app, tmp_path):
+    """The fixture app exposes an open redirect (/redirect?url=) and a
+    traversal-prone file endpoint (/file?path=); the auto scan must find both."""
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        ws = Workspace.create(app)
+        report = await run_auto_scan(
+            ws,
+            app,
+            depth=1,
+            max_urls=30,
+            workers=4,
+            parse_js=False,
+            fuzz=False,
+            sqli=False,
+            xss=False,
+            upload=False,
+            default_creds=False,
+        )
+        red = next(
+            (f for f in report.redirect_findings if f.param == "url"), None
+        )
+        assert red is not None
+        assert red.confidence == "confirmed"
+        trav = next(
+            (f for f in report.traversal_findings if f.param == "path"), None
+        )
+        assert trav is not None
+        assert trav.target_file == "etc/passwd"
+        types = {f.type for f in report.findings}
+        assert "open_redirect_location_header" in types
+        assert "path_traversal" in types
+    finally:
+        os.chdir(old_cwd)
+
+
 # ------------------------------------------------------------------ CLI Integration Tests
 def test_cli_discover_with_fuzz(app, tmp_path):
     res = run(["discover", app, "--fuzz", "--max-urls", "10", "--no-js"], tmp_path)

@@ -735,6 +735,92 @@ def md_xss(d: dict) -> str:
     return "\n".join(lines)
 
 
+def md_redirect(d: dict) -> str:
+    target = d.get("target") or ""
+    tested = d.get("tested_params") or []
+    findings = d.get("findings") or []
+
+    lines = [f"# Open Redirect Analysis: `{target}`", ""]
+    lines.append(
+        f"- **Parameters Tested**: {', '.join(f'`{p}`' for p in tested) if tested else '_none_'}"
+    )
+    lines.append(f"- **Open Redirects Detected**: `{len(findings)}`")
+    lines.append("")
+
+    if not findings:
+        lines.append("## Results")
+        lines.append("")
+        lines.append("_No open-redirect behavior detected across tested parameters._")
+        return "\n".join(lines)
+
+    lines.append("## Open Redirect Findings")
+    lines.append("")
+    for r in findings:
+        get = lambda k, dflt="": (  # noqa: E731
+            r.get(k) if isinstance(r, dict) else getattr(r, k, dflt)
+        )
+        badge = f"**[{str(get('confidence', 'low')).upper()}]**"
+        lines.append(
+            f"### {badge} Parameter `{get('param')}` ({get('param_type')})"
+        )
+        lines.append(f"- **Mechanism**: `{get('redirect_type')}`")
+        lines.append(f"- **Probe Payload**: `{get('payload')}`")
+        if get("redirect_to"):
+            lines.append(f"- **Redirects To**: `{get('redirect_to')}`")
+        if get("status_code"):
+            lines.append(f"- **Status Code**: `{get('status_code')}`")
+        if get("evidence"):
+            lines.append(f"- **Evidence**: {get('evidence')}")
+        if get("suggestion"):
+            lines.append(f"- **Remediation**: {get('suggestion')}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def md_traversal(d: dict) -> str:
+    target = d.get("target") or ""
+    tested = d.get("tested_params") or []
+    findings = d.get("findings") or []
+
+    lines = [f"# Path Traversal Analysis: `{target}`", ""]
+    lines.append(
+        f"- **Parameters Tested**: {', '.join(f'`{p}`' for p in tested) if tested else '_none_'}"
+    )
+    lines.append(f"- **Traversal Disclosures Detected**: `{len(findings)}`")
+    lines.append("")
+
+    if not findings:
+        lines.append("## Results")
+        lines.append("")
+        lines.append(
+            "_No path traversal file disclosures detected across tested parameters._"
+        )
+        return "\n".join(lines)
+
+    lines.append("## Path Traversal Findings")
+    lines.append("")
+    for t in findings:
+        get = lambda k, dflt="": (  # noqa: E731
+            t.get(k) if isinstance(t, dict) else getattr(t, k, dflt)
+        )
+        badge = f"**[{str(get('confidence', 'low')).upper()}]**"
+        lines.append(
+            f"### {badge} Parameter `{get('param')}` ({get('param_type')})"
+        )
+        lines.append(f"- **Target File**: `{get('target_file')}`")
+        lines.append(f"- **Payload**: `{get('payload')}`")
+        if get("status_code"):
+            lines.append(f"- **Status Code**: `{get('status_code')}`")
+        if get("evidence"):
+            lines.append(f"- **Evidence**: {get('evidence')}")
+        if get("suggestion"):
+            lines.append(f"- **Remediation**: {get('suggestion')}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def md_scan(d: dict) -> str:
     target = d.get("target") or ""
     eps = d.get("crawled_endpoints", 0)
@@ -758,6 +844,8 @@ def md_scan(d: dict) -> str:
     lines.append(f"- **Fuzzing Anomalies**: `{len(anoms)}`")
     lines.append(f"- **SQLi Vulnerabilities**: `{len(sqli)}`")
     lines.append(f"- **XSS Reflections**: `{len(xss)}`")
+    lines.append(f"- **Open Redirects**: `{len(d.get('redirect_findings') or [])}`")
+    lines.append(f"- **Path Traversals**: `{len(d.get('traversal_findings') or [])}`")
     lines.append(f"- **Login Bypass Candidates**: `{len(d.get('login_bypasses') or [])}`")
     lines.append(f"- **Total Security Findings**: `{len(findings)}`")
     lines.append("")
