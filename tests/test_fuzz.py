@@ -169,6 +169,7 @@ def test_fuzz_command_oneshot(app, tmp_path):
     r = run(["fuzz", "-u", f"{app}/debug?enabled=true"], tmp_path)
     assert r.returncode == 0, r.stderr
     d = json.loads(r.stdout)
+    assert d["target"] == f"{app}/debug"
     assert d["total_variants"] >= 1
     assert any(x["label"].startswith("flip:enabled") for x in d["results"])
 

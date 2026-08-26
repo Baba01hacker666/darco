@@ -267,3 +267,11 @@ requests:
     assert len(data["matched_results"]) == 1
     assert data["matched_results"][0]["template_id"] == "test-login-check"
     assert len(data["findings"]) == 1
+
+
+def test_cli_template_run_builtin_by_name(app, tmp_path):
+    res = run(["template", "run", "-u", f"{app}/", "-t", "git-config"], tmp_path)
+    assert res.returncode == 0, res.stderr
+    data = json.loads(res.stdout)
+    assert data["templates_loaded"] == 1
+    assert data["templates_executed"] == 1

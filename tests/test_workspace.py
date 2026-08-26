@@ -77,6 +77,26 @@ def test_findings_dedupe(tmp_path):
     assert len(ws.load_findings()) == 2
 
 
+def test_load_sitemap_roundtrip(tmp_path):
+    from darco.models import Endpoint, SiteMap
+
+    ws = Workspace.create("http://t.test", tmp_path / "w.darco")
+    assert ws.load_sitemap() is None
+    sm = SiteMap(
+        target="http://t.test",
+        endpoints=[Endpoint(url="http://t.test/", methods=["GET"])],
+        emails=["a@t.test"],
+    )
+    ws.save_sitemap(sm)
+    loaded = ws.load_sitemap()
+    assert loaded is not None
+    assert loaded.target == "http://t.test"
+    assert loaded.emails == ["a@t.test"]
+    assert loaded.endpoints[0].url == "http://t.test/"
+    ws.sitemap_file.write_text("{not valid json")
+    assert ws.load_sitemap() is None
+
+
 def test_merge_cookies():
     base = [Cookie(name="a", value="1", domain="h")]
     incoming = [Cookie(name="a", value="2", domain="h"), Cookie(name="b", value="3")]

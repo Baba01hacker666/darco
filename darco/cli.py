@@ -60,13 +60,109 @@ def _emit(ctx, data: dict, md_builder) -> None:
         click.echo(_table_from_json(data))
 
 
+_CELL_MAX = 60
+_LINE_MAX = 200
+
+
+def _cell(value: object, limit: int = _LINE_MAX) -> str:
+    s = str(value)
+    s = s.replace("\n", "\\n").replace("\r", "\\r").replace("\t", " ")
+    if len(s) > limit:
+        s = s[: limit - 3] + "..."
+    return s
+
+
+def _table_from_list(items: list[dict], indent: str = "") -> list[str]:
+    """Render a list of dicts as an aligned table with a header row."""
+    headers: list[str] = []
+    for item in items:
+        for key in item:
+            if key not in headers:
+                headers.append(key)
+    rows = [[_cell(item.get(h, ""), _CELL_MAX) for h in headers] for item in items]
+    widths = [
+        max([len(h)] + [len(r[i]) for r in rows]) for i, h in enumerate(headers)
+    ]
+    pad = "  "
+    lines = [
+        indent + pad.join(h.ljust(widths[i]) for i, h in enumerate(headers)),
+        indent + pad.join("-" * w for w in widths),
+    ]
+    lines.extend(
+        indent + pad.join(r[i].ljust(widths[i]) for i in range(len(headers)))
+        for r in rows
+    )
+    return lines
+
+
+def _render_dict_block(value: dict, indent: str = "  ") -> list[str]:
+    lines: list[str] = []
+    for key, item in value.items():
+        if isinstance(item, dict):
+            lines.append(f"{indent}{key}:")
+            lines.extend(_render_dict_block(item, indent + "  "))
+        elif isinstance(item, list):
+            if not item:
+                lines.append(f"{indent}{key}\t[]")
+            elif all(isinstance(entry, dict) for entry in item):
+                lines.append(f"{indent}{key}:")
+                lines.extend(_table_from_list(item, indent + "  "))
+            else:
+                lines.append(f"{indent}{key}\t{_cell(item)}")
+        else:
+            lines.append(f"{indent}{key}\t{_cell(item)}")
+    return lines
+
+
+def _render_debrief_table(value: dict) -> list[str]:
+    lines: list[str] = []
+    if value.get("verdict"):
+        lines.append(f"  verdict\t{_cell(value['verdict'])}")
+    for section in ("highlights", "next_steps"):
+        items = value.get(section) or []
+        if items:
+            lines.append(f"  {section}:")
+            lines.extend(f"    - {_cell(item)}" for item in items)
+    for key, item in value.items():
+        if key in ("verdict", "highlights", "next_steps"):
+            continue
+        if isinstance(item, dict):
+            lines.append(f"  {key}:")
+            lines.extend(_render_dict_block(item, "    "))
+        elif isinstance(item, list):
+            if not item:
+                lines.append(f"  {key}\t[]")
+            elif all(isinstance(entry, dict) for entry in item):
+                lines.append(f"  {key}:")
+                lines.extend(_table_from_list(item, "    "))
+            else:
+                lines.append(f"  {key}\t{_cell(item)}")
+        else:
+            lines.append(f"  {key}\t{_cell(item)}")
+    return lines
+
+
 def _table_from_json(data: dict) -> str:
-    rows = []
-    for k, v in data.items():
-        if isinstance(v, (dict, list)):
-            v = json.dumps(v, ensure_ascii=False)
-        rows.append(f"{k}\t{v}")
-    return "\n".join(rows)
+    """Render structured command output as a scannable text table."""
+    lines: list[str] = []
+    for key, value in data.items():
+        if key == "debrief" and isinstance(value, dict):
+            lines.append("debrief:")
+            lines.extend(_render_debrief_table(value))
+        elif isinstance(value, list):
+            if not value:
+                lines.append(f"{key}\t[]")
+            elif all(isinstance(item, dict) for item in value):
+                lines.append(f"{key}:")
+                lines.extend(_table_from_list(value))
+            else:
+                lines.append(f"{key}\t{_cell(value)}")
+        elif isinstance(value, dict):
+            lines.append(f"{key}:")
+            lines.extend(_render_dict_block(value))
+        else:
+            lines.append(f"{key}\t{_cell(value)}")
+    return "\n".join(lines)
 
 
 # ------------------------------------------------------------------ workspace resolution
@@ -378,7 +474,10 @@ def ingest_curl(ctx, command, dry_run):
     from .render import md_store
 
     ws = _find_workspace(ctx)
-    request = parse_curl(list(command))
+    if len(command) == 1 and " " in command[0]:
+        request = parse_curl(command[0])
+    else:
+        request = parse_curl(list(command))
     _emit(ctx, _store_parsed(ws, request, dry_run), md_store)
 
 
@@ -1250,6 +1349,22 @@ def info_cmd(
 @click.option(
     "--insecure", is_flag=True, default=False, help="Disable TLS verification"
 )
+@click.option("-X", "--method", default=None, help="HTTP method (GET, POST, etc.)")
+@click.option("-d", "--data", default=None, help="Request body (prefix @file to read)")
+@click.option(
+    "-H",
+    "--header",
+    "cli_header",
+    multiple=True,
+    help="Header NAME:VALUE (repeatable)",
+)
+@click.option(
+    "-F",
+    "--form",
+    "cli_form",
+    multiple=True,
+    help="Form field NAME=VALUE (repeatable)",
+)
 @click.option(
     "--plugin",
     "only_plugins",
@@ -1265,10 +1380,10 @@ def info_cmd(
 @click.pass_context
 def sql_cmd(
     ctx, target, url, from_id, param, save, include_state, insecure,
-    only_plugins, skip_plugins,
+    method, data, cli_header, cli_form, only_plugins, skip_plugins,
 ):
     """SQL injection testing: syntax break, quote balancing, arithmetic evaluation, and boolean differential."""
-    from .models import Finding, Request
+    from .models import Finding
     from .render import md_sqli
     from .sqli import scan_sqli
 
@@ -1303,22 +1418,11 @@ def sql_cmd(
             raise DarcoError(
                 "provide a target URL with parameters: 'darco sql <url>' or -u <url> or --from <id>"
             )
-        if not url.startswith(("http://", "https://")):
-            url = "http://" + url
-        split = urlsplit(url)
-        params = [
-            NameValue(name=k, value=v)
-            for k, v in parse_qsl(split.query, keep_blank_values=True)
-        ]
-        clean_url = url.split("?", 1)[0] if split.query else url
-        base_req = Request(
-            method="GET",
-            url=clean_url,
-            params=params,
-            verify=not insecure,
-            source="oneshot",
+        base_req, session, is_oneshot = _resolve_base_request(
+            ctx, None, None, None, url, method, data, cli_header, cli_form
         )
-        session = _one_shot_session()
+        if is_oneshot:
+            base_req.verify = not insecure
 
     result = scan_sqli(
         base_req,
@@ -1366,12 +1470,28 @@ def sql_cmd(
     help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
 )
 @click.option("--insecure", is_flag=True, default=False)
+@click.option("-X", "--method", default=None, help="HTTP method (GET, POST, etc.)")
+@click.option("-d", "--data", default=None, help="Request body (prefix @file to read)")
+@click.option(
+    "-H",
+    "--header",
+    "cli_header",
+    multiple=True,
+    help="Header NAME:VALUE (repeatable)",
+)
+@click.option(
+    "-F",
+    "--form",
+    "cli_form",
+    multiple=True,
+    help="Form field NAME=VALUE (repeatable)",
+)
 @click.option("--plugin", "only_plugins", multiple=True)
 @click.option("--skip-plugin", "skip_plugins", multiple=True)
 @click.pass_context
 def sqli_cmd(
     ctx, target, url, from_id, param, save, include_state, insecure,
-    only_plugins, skip_plugins,
+    method, data, cli_header, cli_form, only_plugins, skip_plugins,
 ):
     """Alias for SQL injection testing."""
     ctx.invoke(
@@ -1383,6 +1503,10 @@ def sqli_cmd(
         save=save,
         include_state=include_state,
         insecure=insecure,
+        method=method,
+        data=data,
+        cli_header=cli_header,
+        cli_form=cli_form,
         only_plugins=only_plugins,
         skip_plugins=skip_plugins,
     )
@@ -1413,6 +1537,15 @@ def sqli_cmd(
     multiple=True,
     help="Add custom cookies (e.g. -C 'session=xyz')",
 )
+@click.option("-X", "--method", default=None, help="HTTP method (GET, POST, etc.)")
+@click.option("-d", "--data", default=None, help="Request body (prefix @file to read)")
+@click.option(
+    "-F",
+    "--form",
+    "cli_form",
+    multiple=True,
+    help="Form field NAME=VALUE (repeatable)",
+)
 @click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option(
     "--include-state",
@@ -1425,10 +1558,11 @@ def sqli_cmd(
 )
 @click.pass_context
 def xss_cmd(
-    ctx, target, url, from_id, param, headers, cookies, save, include_state, insecure
+    ctx, target, url, from_id, param, headers, cookies, method, data, cli_form,
+    save, include_state, insecure,
 ):
     """XSS & reflection audit: probes inputs, classifies reflection contexts, and audits HTML encoding."""
-    from .models import Cookie, Finding, NameValue, Request
+    from .models import Cookie, Finding, NameValue
     from .render import md_xss
     from .xss import scan_xss
 
@@ -1463,23 +1597,14 @@ def xss_cmd(
             raise DarcoError(
                 "provide a target URL with parameters: 'darco xss <url>' or -u <url> or --from <id>"
             )
-        if not url.startswith(("http://", "https://")):
-            url = "http://" + url
-        split = urlsplit(url)
-        params = [
-            NameValue(name=k, value=v)
-            for k, v in parse_qsl(split.query, keep_blank_values=True)
-        ]
-        clean_url = url.split("?", 1)[0] if split.query else url
-        base_req = Request(
-            method="GET",
-            url=clean_url,
-            params=params,
-            verify=not insecure,
-            source="oneshot",
-        )
         ws = _find_workspace(ctx, require=False)
-        session = ws.load_session() if ws else _one_shot_session()
+        base_req, session, is_oneshot = _resolve_base_request(
+            ctx, None, None, None, url, method, data, (), cli_form
+        )
+        if is_oneshot:
+            base_req.verify = not insecure
+            if ws:
+                session = ws.load_session()
 
     # Append any user-provided headers or cookies
     if headers:
@@ -1532,6 +1657,9 @@ def xss_cmd(
 @click.option("-p", "--param", default=None, help="Specific parameter name to test")
 @click.option("-H", "--header", "headers", multiple=True)
 @click.option("-C", "--cookie", "cookies", multiple=True)
+@click.option("-X", "--method", default=None, help="HTTP method (GET, POST, etc.)")
+@click.option("-d", "--data", default=None, help="Request body (prefix @file to read)")
+@click.option("-F", "--form", "cli_form", multiple=True, help="Form field NAME=VALUE")
 @click.option("--save", is_flag=True)
 @click.option(
     "--include-state",
@@ -1542,7 +1670,8 @@ def xss_cmd(
 @click.option("--insecure", is_flag=True, default=False)
 @click.pass_context
 def reflect_cmd(
-    ctx, target, url, from_id, param, headers, cookies, save, include_state, insecure
+    ctx, target, url, from_id, param, headers, cookies, method, data, cli_form,
+    save, include_state, insecure,
 ):
     """Alias for XSS & reflection audit."""
     ctx.invoke(
@@ -1553,6 +1682,9 @@ def reflect_cmd(
         param=param,
         headers=headers,
         cookies=cookies,
+        method=method,
+        data=data,
+        cli_form=cli_form,
         save=save,
         include_state=include_state,
         insecure=insecure,
@@ -2672,6 +2804,7 @@ def template_run_cmd(
         load_templates_from_dir,
         run_template_scan,
     )
+    from .templates.loader import BUILTIN_TEMPLATES_DIR
 
     target_val = url or target
     if not target_val:
@@ -2703,7 +2836,15 @@ def template_run_cmd(
             elif p.is_file():
                 all_templates.append(load_template(p))
             else:
-                raise DarcoError(f"template path not found: {t_path}")
+                builtin = None
+                for suffix in (".yaml", ".yml", ".json"):
+                    candidate = BUILTIN_TEMPLATES_DIR / f"{t_path}{suffix}"
+                    if candidate.is_file():
+                        builtin = candidate
+                        break
+                if builtin is None:
+                    raise DarcoError(f"template path not found: {t_path}")
+                all_templates.append(load_template(builtin))
     elif builtin:
         all_templates.extend(
             load_builtin_templates(tags=list(tags_opt), severities=list(sev_opt))

@@ -266,6 +266,16 @@ def test_cli_xss_with_auth_cookie_and_header(app, tmp_path):
     assert "user" in data["tested_params"]
 
 
+def test_cli_xss_post_body(app, tmp_path):
+    res = run(
+        ["xss", f"{app}/echo", "-X", "POST", "-d", "name=hello"],
+        tmp_path,
+    )
+    assert res.returncode == 0, res.stderr
+    data = json.loads(res.stdout)
+    assert "name" in data["tested_params"]
+
+
 def test_cli_reflect_alias(app, tmp_path):
     res = run(["reflect", f"{app}/echo?msg=test"], tmp_path)
     assert res.returncode == 0, res.stderr

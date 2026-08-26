@@ -198,6 +198,16 @@ class Workspace:
         self.save_findings(existing)
         return added
 
+    def load_sitemap(self) -> SiteMap | None:
+        try:
+            if self.sitemap_file.exists() and self.sitemap_file.stat().st_size > 2:
+                return SiteMap.model_validate(
+                    json.loads(self.sitemap_file.read_text())
+                )
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
     def save_sitemap(self, sitemap: SiteMap) -> None:
         self.sitemap_file.write_text(json.dumps(to_json(sitemap), indent=2))
 

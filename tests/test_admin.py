@@ -138,3 +138,16 @@ def test_cli_admin_with_email_flag(app, tmp_path):
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "admin@target.local" in data.get("emails_used", [])
+
+
+def test_cli_admin_with_workspace_sitemap(app, tmp_path):
+    from darco.models import SiteMap
+    from darco.workspace import Workspace
+
+    Workspace.create(app, tmp_path / "target.test.darco").save_sitemap(
+        SiteMap(target=app, emails=["admin@target.test"])
+    )
+    res = run(["admin", app, "--no-default-creds"], tmp_path)
+    assert res.returncode == 0, res.stderr
+    data = json.loads(res.stdout)
+    assert "admin@target.test" in data.get("emails_used", [])

@@ -355,6 +355,25 @@ def test_cli_sql_command(app, tmp_path):
     assert "vulnerabilities" in data
 
 
+def test_cli_sql_post_body_xml(app, tmp_path):
+    res = run(
+        [
+            "sql",
+            f"{app}/product/stock",
+            "-X",
+            "POST",
+            "-d",
+            "<storeId>1</storeId>",
+            "-H",
+            "Content-Type: application/xml",
+        ],
+        tmp_path,
+    )
+    assert res.returncode == 0, res.stderr
+    data = json.loads(res.stdout)
+    assert "storeId" in data["tested_params"]
+
+
 def test_cli_sql_include_state_flag(app, tmp_path):
     res = run(["sql", f"{app}/echo?__VIEWSTATE=1&q=x"], tmp_path)
     assert res.returncode == 0, res.stderr

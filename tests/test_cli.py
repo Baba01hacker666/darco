@@ -181,3 +181,42 @@ def test_cli_ingest_preserves_header_value(tmp_path):
     assert req["body_raw"] == "<storeId>1</storeId>"
     ct = [h for h in req["headers"] if h["name"] == "Content-Type"]
     assert ct and ct[0]["value"] == "application/xml"
+
+
+def test_table_renderer_nested_and_lists():
+    from darco.cli import _table_from_json
+
+    out = _table_from_json(
+        {
+            "target": "http://t.test",
+            "stats": {"visited": 3, "errors": 0},
+            "endpoints": [
+                {"url": "http://t.test/a", "methods": ["GET"], "status": 200},
+                {"url": "http://t.test/b", "methods": ["POST"], "status": 403},
+            ],
+            "emails": ["a@t.test"],
+            "debrief": {
+                "verdict": "Checked 2 endpoints.",
+                "highlights": ["Found /admin"],
+                "next_steps": ["Verify auth."],
+            },
+        }
+    )
+    assert "target\thttp://t.test" in out
+    assert "visited" in out
+    assert "url" in out
+    assert "http://t.test/a" in out
+    assert "a@t.test" in out
+    assert "verdict\tChecked 2 endpoints." in out
+    assert "- Found /admin" in out
+
+
+def test_cli_table_format_send(app, tmp_path):
+    res = run(
+        ["--format", "table", "send", "-u", f"{app}/api/items"],
+        tmp_path,
+        json_only=False,
+    )
+    assert res.returncode == 0, res.stderr
+    assert "status_code" in res.stdout
+    assert "name" in res.stdout  # response headers rendered as a sub-table

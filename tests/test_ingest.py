@@ -1,7 +1,10 @@
 import json
+import os
 
 import pytest
+from click.testing import CliRunner
 
+from darco.cli import cli
 from darco.errors import DarcoError
 from darco.ingest import parse_curl, parse_har, parse_raw_http
 from darco.models import BodyType
@@ -16,6 +19,33 @@ def test_curl_basic_get():
     assert [(p.name, p.value) for p in req.params] == [("foo", "bar")]
     assert any(h.name == "X-Api-Key" and h.value == "secret" for h in req.headers)
     assert any(h.name == "User-Agent" and h.value == "test-agent" for h in req.headers)
+
+
+def test_cli_ingest_curl_quoted_command(tmp_path):
+    runner = CliRunner()
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        res = runner.invoke(cli, ["--json", "init", "http://target.test"])
+        assert res.exit_code == 0, res.output
+        res = runner.invoke(
+            cli,
+            [
+                "--json",
+                "ingest",
+                "curl",
+                "curl -X POST http://target.test/login -d 'user=admin&pass=hunter2'",
+            ],
+        )
+        assert res.exit_code == 0, res.output
+        data = json.loads(res.stdout)
+        assert data["id"] == "0001"
+        req = data["request"]
+        assert req["method"] == "POST"
+        assert req["url"] == "http://target.test/login"
+        assert req["body_type"] == "form"
+    finally:
+        os.chdir(old_cwd)
 
 
 def test_curl_form_data_and_method():

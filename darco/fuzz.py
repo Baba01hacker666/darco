@@ -261,6 +261,7 @@ def run_fuzz(
 
     results.sort(key=lambda r: (r.get("anomaly") or "", r.get("label") or ""))
     return {
+        "target": req.url,
         "total_variants": len(variants),
         "anomalies": len(results),
         "baseline_status": baseline_response.status_code if baseline_response else None,
