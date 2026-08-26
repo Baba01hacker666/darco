@@ -158,39 +158,50 @@ def scan_xss(
             reflected_segment = body[canary_end : canary_end + 120]
 
             # Check tag reflection
-            if "<darcotag>" in reflected_segment.lower():
+            tag_pos = reflected_segment.lower().find("<darcotag>")
+            tag_encoded = False
+            if tag_pos != -1:
                 unencoded.extend(["<", ">", "<darcotag>"])
-            elif (
-                "&lt;darcotag&gt;" in reflected_segment.lower()
-                or "%3cdarcotag%3e" in reflected_segment.lower()
-            ):
-                encoded.extend(["&lt;", "&gt;"])
             else:
-                # Check individual angle brackets in the immediate segment
-                char_window = reflected_segment[:40]
-                if "<" in char_window:
-                    unencoded.append("<")
-                elif "&lt;" in char_window.lower() or "%3c" in char_window.lower():
-                    encoded.append("&lt;")
+                for enc_tag in ("&lt;darcotag&gt;", "%3cdarcotag%3e"):
+                    enc_pos = reflected_segment.lower().find(enc_tag)
+                    if enc_pos != -1:
+                        tag_pos = enc_pos
+                        tag_encoded = True
+                        encoded.extend(["&lt;", "&gt;"])
+                        break
 
-                if ">" in char_window:
+            # The characters before the tag are the injected quotes & brackets ('">)
+            prefix_window = (
+                reflected_segment[:tag_pos]
+                if tag_pos != -1
+                else reflected_segment[:30]
+            )
+            prefix_lower = prefix_window.lower()
+
+            if tag_pos == -1 and not tag_encoded:
+                # If the tag was completely stripped, inspect the immediate prefix window
+                if "<" in prefix_window:
+                    unencoded.append("<")
+                elif "&lt;" in prefix_lower or "%3c" in prefix_lower:
+                    encoded.append("&lt;")
+                if ">" in prefix_window:
                     unencoded.append(">")
-                elif "&gt;" in char_window.lower() or "%3e" in char_window.lower():
+                elif "&gt;" in prefix_lower or "%3e" in prefix_lower:
                     encoded.append("&gt;")
 
-            # Check quotes in the immediate segment
-            quote_window = reflected_segment[:40]
-            if '"' in quote_window:
+            if '"' in prefix_window:
                 unencoded.append('"')
-            elif "&quot;" in quote_window.lower() or "%22" in quote_window.lower():
+            elif "&quot;" in prefix_lower or "%22" in prefix_lower:
                 encoded.append("&quot;")
 
-            if "'" in quote_window:
+            if "'" in prefix_window:
                 unencoded.append("'")
             elif (
-                "&#39;" in quote_window.lower()
-                or "&#x27;" in quote_window.lower()
-                or "%27" in quote_window.lower()
+                "&#39;" in prefix_lower
+                or "&#x27;" in prefix_lower
+                or "&apos;" in prefix_lower
+                or "%27" in prefix_lower
             ):
                 encoded.append("&#39;")
 

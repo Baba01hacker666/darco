@@ -1,0 +1,26 @@
+id: swagger-ui-exposure
+info:
+  name: Swagger / OpenAPI UI Exposure
+  author: darco
+  severity: info
+  description: Detects exposed Swagger / OpenAPI interactive documentation consoles.
+  tags: api,swagger,openapi,docs
+  remediation: Restrict API documentation consoles behind authentication if endpoints are private.
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/swagger-ui.html"
+      - "{{BaseURL}}/swagger/index.html"
+      - "{{BaseURL}}/api/docs"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "swagger-ui"
+          - "swagger"
+        part: body
+        condition: or

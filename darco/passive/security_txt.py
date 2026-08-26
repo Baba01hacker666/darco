@@ -68,6 +68,8 @@ async def inspect_security_txt(
                         try:
                             # Try ISO 8601 parsing
                             exp_dt = datetime.fromisoformat(sec.expires)
+                            if exp_dt.tzinfo is None:
+                                exp_dt = exp_dt.replace(tzinfo=UTC)
                             if exp_dt < datetime.now(UTC):
                                 findings.append(
                                     Finding(

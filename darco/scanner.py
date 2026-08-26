@@ -28,13 +28,21 @@ def _build_requests_from_sitemap(
 
     # 1. Endpoints with query parameters
     for ep in sitemap.endpoints:
-        if "?" in ep.url:
-            clean_url = ep.url.split("?", 1)[0]
+        params: list[NameValue] = []
+        clean_url = ep.url.split("?", 1)[0]
+        if ep.params:
+            params = [
+                NameValue(name=p.name, value=p.value if p.value is not None else "1")
+                for p in ep.params
+                if p.name
+            ]
+        elif "?" in ep.url:
             query = ep.url.split("?", 1)[1]
             params = [
-                NameValue(name=k, value=v)
+                NameValue(name=k, value=v or "1")
                 for k, v in parse_qsl(query, keep_blank_values=True)
             ]
+        if params:
             sig = ("GET", clean_url, tuple(sorted(p.name for p in params)))
             if sig not in seen:
                 seen.add(sig)
@@ -114,6 +122,7 @@ async def run_auto_scan(
     sqli: bool = True,
     xss: bool = True,
     upload: bool = True,
+    default_creds: bool = True,
     include_state_fields: bool = False,
     timeout: float = 10.0,
     verify: bool = True,
@@ -141,6 +150,7 @@ async def run_auto_scan(
         fuzzed_requests=len(candidate_requests),
         technologies=sitemap.technologies,
         wafs=sitemap.wafs,
+        emails=sitemap.emails,
         findings=list(sitemap.signals),
     )
 
@@ -233,8 +243,8 @@ async def run_auto_scan(
             except (httpx.HTTPError, OSError, TimeoutError, ValueError):
                 pass
 
-    # Step 2b: Audit discovered login forms for SQL auth bypass
-    if sqli:
+    # Step 2b: Audit discovered login forms for SQL auth bypass and default credentials
+    if sqli or default_creds:
         from .login import audit_login_forms, login_forms_from_forms
 
         login_forms = login_forms_from_forms(sitemap.forms)
@@ -245,13 +255,19 @@ async def run_auto_scan(
                     target=url,
                     timeout=timeout,
                     verify=verify,
+                    emails=sitemap.emails,
+                    test_default_creds=default_creds,
                 )
                 report.login_bypasses = login_res.bypasses
                 for b in login_res.bypasses:
+                    is_cred = b.param == "credentials" and ":" in b.payload
+                    finding_type = (
+                        "default_credentials" if is_cred else "login_sqli_bypass"
+                    )
                     all_new_findings.append(
                         Finding(
-                            id=f"login-bypass-{b.param}-{b.payload[:16]}",
-                            type="login_sqli_bypass",
+                            id=f"login-{finding_type}-{b.payload[:16]}",
+                            type=finding_type,
                             severity=(
                                 "high"
                                 if b.confidence in ("confirmed", "high")
@@ -264,6 +280,79 @@ async def run_auto_scan(
                     )
             except (httpx.HTTPError, OSError, TimeoutError, ValueError):
                 pass
+
+    # Step 2c: Admin Panel discovery and smart credential auditing
+    try:
+        from .admin import find_admin_panels
+
+        admin_panels = await find_admin_panels(
+            url,
+            timeout=timeout,
+            verify=verify,
+        )
+        report.admin_panels = admin_panels
+        for ap in admin_panels:
+            if ap.auth_type == "exposed_dashboard":
+                all_new_findings.append(
+                    Finding(
+                        id=f"admin-exposed-{ap.path.strip('/')}",
+                        type="admin_panel_exposed",
+                        severity="high",
+                        location=ap.url,
+                        evidence=f"Administrative dashboard exposed without authentication: {ap.evidence}",
+                        suggestion="Enforce strict authentication and restrict access to authorized IP ranges.",
+                    )
+                )
+            elif ap.auth_type in ("login_form", "basic_auth", "portal_redirect"):
+                all_new_findings.append(
+                    Finding(
+                        id=f"admin-panel-{ap.path.strip('/')}",
+                        type="admin_panel_found",
+                        severity="medium",
+                        location=ap.url,
+                        evidence=f"Administrative portal discovered: {ap.evidence}",
+                        suggestion="Verify that the administrative interface is protected by multi-factor authentication (MFA) and rate limiting.",
+                    )
+                )
+
+        admin_login_forms = [p.login_form for p in admin_panels if p.login_form]
+        if (sqli or default_creds) and admin_login_forms:
+            existing_actions = {f.action for f in login_forms} if "login_forms" in locals() and login_forms else set()
+            new_admin_forms = [f for f in admin_login_forms if f.action not in existing_actions]
+            if new_admin_forms:
+                try:
+                    admin_res = audit_login_forms(
+                        new_admin_forms,
+                        target=url,
+                        timeout=timeout,
+                        verify=verify,
+                        emails=sitemap.emails,
+                        test_default_creds=default_creds,
+                    )
+                    report.login_bypasses.extend(admin_res.bypasses)
+                    for b in admin_res.bypasses:
+                        is_cred = b.param == "credentials" and ":" in b.payload
+                        finding_type = (
+                            "default_credentials" if is_cred else "login_sqli_bypass"
+                        )
+                        all_new_findings.append(
+                            Finding(
+                                id=f"admin-login-{finding_type}-{b.payload[:16]}",
+                                type=finding_type,
+                                severity=(
+                                    "high"
+                                    if b.confidence in ("confirmed", "high")
+                                    else "medium"
+                                ),
+                                location=f"{url} ({b.param})",
+                                evidence=b.evidence,
+                                suggestion=b.suggestion,
+                            )
+                        )
+                except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+                    pass
+    except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+        pass
 
     # Step 3: Check for file upload forms and upload endpoints
     if upload:

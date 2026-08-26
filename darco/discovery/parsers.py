@@ -75,13 +75,15 @@ def extract_forms(soup: BeautifulSoup, base_url: str) -> list[Form]:
             name = sel.get("name")
             if not name:
                 continue
+            selected_opt = sel.find("option", selected=True)
+            default_val = None
+            if selected_opt:
+                default_val = selected_opt.get("value") or selected_opt.get_text()
             inputs.append(
                 FormInput(
                     name=name,
                     type="select",
-                    default=sel.find("option", selected=True).get("value")
-                    if sel.find("option", selected=True)
-                    else None,
+                    default=default_val,
                 )
             )
         for ta in form.find_all("textarea"):
@@ -99,3 +101,61 @@ def is_html(content_type: str | None, body: str) -> bool:
     if content_type:
         return "html" in content_type.lower()
     return body.lstrip().startswith("<!doctype") or body.lstrip().startswith("<html")
+
+
+_EMAIL_REGEX = re.compile(
+    r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
+)
+_IGNORED_EMAIL_EXTENSIONS = {
+    "png", "jpg", "jpeg", "gif", "svg", "webp", "css", "js", "woff", "woff2",
+    "ttf", "eot", "ico", "map", "mp4", "mp3", "pdf", "zip", "tar", "gz",
+}
+_IGNORED_EMAIL_DOMAINS = {
+    "example.com", "example.org", "example.net",
+    "domain.com", "yourcompany.com", "company.com", "email.com", "sample.com",
+    "w3.org", "schema.org", "sentry.io",
+}
+
+
+def extract_emails(text_or_soup: str | BeautifulSoup) -> list[str]:
+    """Extract valid, clean email addresses from HTML text or mailto: links."""
+    emails: set[str] = set()
+    raw_text = ""
+    if isinstance(text_or_soup, BeautifulSoup):
+        # 1. mailto: links
+        for tag in text_or_soup.find_all(["a", "area"]):
+            href = tag.get("href") or ""
+            if href.lower().startswith("mailto:"):
+                email_cand = href[7:].split("?")[0].split("#")[0].strip()
+                if email_cand:
+                    emails.add(email_cand)
+        raw_text = text_or_soup.get_text() + " " + str(text_or_soup)
+    else:
+        raw_text = str(text_or_soup)
+
+    # 2. Text regex
+    for m in _EMAIL_REGEX.finditer(raw_text):
+        emails.add(m.group(0))
+
+    valid: list[str] = []
+    seen: set[str] = set()
+    for em in sorted(emails):
+        em_clean = em.strip().rstrip(".,;:!?)'\"<>[]{}").lstrip(".,;:!?'\"<([]{}").lower()
+        if not (5 <= len(em_clean) <= 100):
+            continue
+        if "@" not in em_clean or em_clean.count("@") != 1:
+            continue
+        user, domain = em_clean.split("@", 1)
+        if not user or not domain or "." not in domain:
+            continue
+        ext = domain.rsplit(".", 1)[-1]
+        if ext in _IGNORED_EMAIL_EXTENSIONS or user.rsplit(".", 1)[-1] in _IGNORED_EMAIL_EXTENSIONS:
+            continue
+        if domain in _IGNORED_EMAIL_DOMAINS:
+            continue
+        if any(domain.endswith("." + d) for d in _IGNORED_EMAIL_DOMAINS):
+            continue
+        if em_clean not in seen:
+            seen.add(em_clean)
+            valid.append(em_clean)
+    return valid

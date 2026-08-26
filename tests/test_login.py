@@ -204,6 +204,56 @@ def test_audit_login_bypass_keyword_content_no_redirect():
     assert "welcome" in b.evidence
 
 
+class FakeDefaultCredClient:
+    """Accepts admin:admin default credentials."""
+
+    def get(self, url, headers=None, params=None):
+        if params and params.get("username") == "admin" and params.get("password") == "admin":
+            return FakeResp(302, "", headers={"location": "/dashboard"})
+        return FakeResp(200, '<form method="GET" action="http://fake/login"><input name="username"><input name="password" type="password"></form>')
+
+    def post(self, url, data=None, headers=None):
+        u = data.get("username", "") if data else ""
+        p = data.get("password", "") if data else ""
+        if u == "admin" and p == "admin":
+            return FakeResp(302, "", headers={"location": "/dashboard"})
+        return FakeResp(401, "Invalid credentials")
+
+    def close(self):
+        pass
+
+
+def test_audit_login_default_credentials():
+    result = audit_login_forms(
+        [_fake_form()],
+        target="http://fake/login",
+        test_default_creds=True,
+        client_factory=lambda t, v: FakeDefaultCredClient(),
+    )
+    assert result.tested_forms == 1
+    assert any(b.param == "credentials" and b.payload == "admin:admin" for b in result.bypasses)
+    cred_finding = next(b for b in result.bypasses if b.payload == "admin:admin")
+    assert cred_finding.confidence == "confirmed"
+    assert "Default credentials accepted" in cred_finding.evidence
+
+
+def test_audit_login_get_method():
+    get_form = LoginForm(
+        url="http://fake/login",
+        action="http://fake/login",
+        method="GET",
+        username_field="username",
+        password_field="password",
+    )
+    result = audit_login_forms(
+        [get_form],
+        target="http://fake/login",
+        test_default_creds=True,
+        client_factory=lambda t, v: FakeDefaultCredClient(),
+    )
+    assert any(b.payload == "admin:admin" for b in result.bypasses)
+
+
 # ------------------------------------------------------------------ CLI
 def test_cli_login_command_fixture(app, tmp_path):
     res = run(["login", f"{app}/login"], tmp_path)

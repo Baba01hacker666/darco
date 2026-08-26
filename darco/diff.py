@@ -64,7 +64,9 @@ def diff_responses(a: Response, b: Response) -> dict:
                 {"name": name, "a": ", ".join(va or []), "b": ", ".join(vb or [])}
             )
 
-    body_changed = normalize_body(a.body) != normalize_body(b.body)
+    norm_a = normalize_body(a.body)
+    norm_b = normalize_body(b.body)
+    body_changed = norm_a != norm_b
     body_section: dict = {"changed": body_changed}
     json_changes: list[str] | None = None
     try:
@@ -75,8 +77,8 @@ def diff_responses(a: Response, b: Response) -> dict:
     except (json.JSONDecodeError, ValueError):
         diff_lines = list(
             difflib.unified_diff(
-                normalize_body(a.body).splitlines(),
-                normalize_body(b.body).splitlines(),
+                norm_a.splitlines(),
+                norm_b.splitlines(),
                 fromfile="a",
                 tofile="b",
                 lineterm="",

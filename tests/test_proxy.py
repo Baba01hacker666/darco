@@ -50,3 +50,22 @@ def test_proxy_connect_tunnel_recorded(app, workspace):
         assert any(r.error and "tunneled" in r.error for r in workspace.list_records())
     finally:
         server.stop()
+
+
+def test_proxy_serialize_multi_headers():
+    from darco.proxy import _serialize
+
+    raw = httpx.Response(
+        status_code=200,
+        headers=[
+            ("Set-Cookie", "a=1; Path=/"),
+            ("Set-Cookie", "b=2; Path=/"),
+            ("X-Custom", "val1"),
+        ],
+        content=b"ok",
+    )
+    serialized = _serialize(raw).decode("latin-1")
+    assert serialized.lower().count("set-cookie:") == 2
+    assert "set-cookie: a=1; path=/" in serialized.lower()
+    assert "set-cookie: b=2; path=/" in serialized.lower()
+    assert "Content-Length: 2" in serialized

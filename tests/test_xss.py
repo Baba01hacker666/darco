@@ -205,6 +205,40 @@ def test_xss_fully_encoded_safe(monkeypatch):
     assert len(r.encoded_chars) > 0
 
 
+def test_xss_encoded_inside_attribute_surrounded_by_template_quotes(monkeypatch):
+    req = Request(
+        method="GET",
+        url="http://app.test/view",
+        params=[NameValue(name="msg", value="test")],
+    )
+
+    def mock_send(r, session):
+        val = next((p.value for p in r.params if p.name == "msg"), "")
+        # Attribute is fully encoded, but surrounded by template double-quotes
+        encoded = (
+            val.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&#39;")
+        )
+        return Response(
+            status_code=200,
+            body=f'<html><body><input value="{encoded}" class="form-control" id="field"></body></html>',
+            body_len=120,
+        )
+
+    monkeypatch.setattr("darco.xss._send", mock_send)
+
+    result = scan_xss(req)
+    assert len(result.reflections) >= 1
+    r = result.reflections[0]
+    assert r.param == "msg"
+    assert r.confidence == "low"
+    assert '"' not in r.unencoded_chars
+    assert "'" not in r.unencoded_chars
+
+
 # ------------------------------------------------------------------ CLI Integration Tests
 def test_cli_xss_command(app, tmp_path):
     res = run(["xss", f"{app}/echo?q=hello"], tmp_path)

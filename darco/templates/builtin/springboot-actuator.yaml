@@ -1,0 +1,26 @@
+id: springboot-actuator-exposure
+info:
+  name: Spring Boot Actuator Endpoints Exposure
+  author: darco
+  severity: medium
+  description: Identifies unauthenticated Spring Boot Actuator monitoring endpoints.
+  tags: spring,actuator,exposure,java
+  remediation: Configure Spring Security to require authentication on /actuator endpoints.
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/actuator"
+      - "{{BaseURL}}/actuator/health"
+      - "{{BaseURL}}/actuator/env"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "_links"
+          - "actuator"
+        part: body
+        condition: and

@@ -321,6 +321,13 @@ def md_discover(sitemap: dict) -> str:
                 f"| {e.get('source')} | {auth} |"
             )
         lines.append("")
+    emails = sitemap.get("emails") or []
+    if emails:
+        lines.append(f"## Disclosed Emails ({len(emails)})")
+        lines.append("")
+        for em in emails:
+            lines.append(f"- `{em}`")
+        lines.append("")
     signals = sitemap.get("signals") or []
     if signals:
         lines.append(f"## Signals ({len(signals)})")
@@ -558,6 +565,15 @@ def md_passive(d: dict) -> str:
             lines.append(f"- **Contact**: {', '.join(f'`{c}`' for c in contacts)}")
         if expires:
             lines.append(f"- **Expires**: `{expires}`")
+        lines.append("")
+
+    # Disclosed Emails
+    emails = d.get("emails") or []
+    if emails:
+        lines.append(f"## Disclosed Emails ({len(emails)})")
+        lines.append("")
+        for em in emails:
+            lines.append(f"- `{em}`")
         lines.append("")
 
     # Findings
@@ -861,6 +877,22 @@ def md_scan(d: dict) -> str:
             lines.append(f"- **Remediation**: {sugg}")
             lines.append("")
 
+    # Admin Panels
+    admin_panels = d.get("admin_panels") or []
+    if admin_panels:
+        lines.append(f"## 🛠️ Discovered Admin Panels & Portals ({len(admin_panels)})")
+        lines.append("")
+        lines.append("| Path | Status | Auth Type | Page Title | Location |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for p in admin_panels:
+            path = p.get("path") or ""
+            st = p.get("status_code", 0)
+            auth = p.get("auth_type", "unknown")
+            title = p.get("title") or "—"
+            url_str = p.get("url") or ""
+            lines.append(f"| `{path}` | `{st}` | `{auth}` | {title[:35]} | `{url_str}` |")
+        lines.append("")
+
     # Upload Security Findings
     upload_findings = d.get("upload_findings") or []
     if upload_findings:
@@ -918,6 +950,15 @@ def md_scan(d: dict) -> str:
             lines.append(
                 f"| `{method}` | `{t_url}` | `{label}` | `{anom}` | `{detail}` |"
             )
+        lines.append("")
+
+    # Disclosed Emails
+    emails = d.get("emails") or []
+    if emails:
+        lines.append(f"## ✉️ Disclosed Emails ({len(emails)})")
+        lines.append("")
+        for em in emails:
+            lines.append(f"- `{em}`")
         lines.append("")
 
     # General Findings
@@ -1143,3 +1184,115 @@ def md_login(d: dict) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def md_admin(d: dict) -> str:
+    target = d.get("target") or ""
+    scanned = d.get("scanned_paths") or 0
+    panels = d.get("panels_found") or []
+    tested = d.get("tested_creds") or 0
+    bypasses = d.get("bypasses") or []
+    emails = d.get("emails_used") or []
+    findings = d.get("findings") or []
+
+    lines = [f"# Admin Panel Discovery & Audit: `{target}`", ""]
+    lines.append(f"- **Probed Admin Paths**: `{scanned}`")
+    lines.append(f"- **Admin Panels Discovered**: `{len(panels)}`")
+    lines.append(f"- **Smart Credential Tests Run**: `{tested}`")
+    lines.append(f"- **Successful Logins / Auth Bypasses**: `{len(bypasses)}`")
+    if emails:
+        lines.append(f"- **Emails Incorporated**: {', '.join(f'`{e}`' for e in emails)}")
+    lines.append("")
+
+    if not panels:
+        lines.append("## Results")
+        lines.append("")
+        lines.append("_No accessible administrative panels or login portals discovered on standard paths._")
+        return "\n".join(lines)
+
+    lines.append(f"## Discovered Admin Panels ({len(panels)})")
+    lines.append("")
+    lines.append("| Path | Status | Auth Type | Page Title | Details |")
+    lines.append("| --- | --- | --- | --- | --- |")
+    for p in panels:
+        path = p.get("path") or ""
+        st = p.get("status_code", 0)
+        auth = p.get("auth_type", "unknown")
+        title = p.get("title") or "—"
+        redir = p.get("redirect_url")
+        detail = f"Redirect: `{redir}`" if redir else f"`{p.get('url', '')}`"
+        lines.append(f"| `{path}` | `{st}` | `{auth}` | {title[:35]} | {detail} |")
+    lines.append("")
+
+    if bypasses:
+        lines.append(f"## 🚨 Successful Admin Logins & Bypasses ({len(bypasses)})")
+        lines.append("")
+        for b in bypasses:
+            conf = b.get("confidence", "confirmed").upper()
+            param = b.get("param", "credentials")
+            payload = b.get("payload", "")
+            ind = b.get("success_indicator", "")
+            ev = b.get("evidence", "")
+            sugg = b.get("suggestion", "")
+            lines.append(f"### **[{conf}]** `{param}` ← `{payload}` (`{ind}`)")
+            lines.append(f"- **Evidence**: {ev}")
+            lines.append(f"- **Remediation**: {sugg}")
+            lines.append("")
+
+    if findings:
+        lines.append(f"## Security Signals ({len(findings)})")
+        lines.append("")
+        for raw in findings:
+            f = Finding.model_validate(raw) if isinstance(raw, dict) else raw
+            lines.append(_md_finding(f))
+
+    return "\n".join(lines)
+
+
+def md_template_report(d: dict) -> str:
+    target = d.get("target") or ""
+    loaded = d.get("templates_loaded", 0)
+    execs = d.get("templates_executed", 0)
+    reqs = d.get("requests_sent", 0)
+    matches = d.get("matched_results") or []
+
+    lines = [f"# Template Scan Report: `{target}`", ""]
+    lines.append(f"- **Templates Loaded**: `{loaded}`")
+    lines.append(f"- **Templates Executed**: `{execs}`")
+    lines.append(f"- **HTTP Requests Sent**: `{reqs}`")
+    lines.append(f"- **Vulnerabilities / Matches Found**: `{len(matches)}`")
+    lines.append("")
+
+    if not matches:
+        lines.append("## Results")
+        lines.append("")
+        lines.append("_No vulnerabilities or signature matches detected by executed templates._")
+        return "\n".join(lines)
+
+    lines.append(f"## Matched Vulnerabilities & Exposures ({len(matches)})")
+    lines.append("")
+    for m in matches:
+        t_id = m.get("template_id", "")
+        t_name = m.get("template_name") or t_id
+        sev = (m.get("severity") or "info").upper()
+        url = m.get("matched_url", "")
+        ev = m.get("evidence", "")
+        curl = m.get("curl", "")
+        rem = m.get("remediation", "")
+        ext = m.get("extracted_data") or {}
+
+        lines.append(f"### **[{sev}]** `{t_id}` — {t_name}")
+        lines.append(f"- **Matched URL**: `{url}`")
+        lines.append(f"- **Evidence**: {ev}")
+        if ext:
+            ext_str = ", ".join(f"`{k}`: {v}" for k, v in ext.items())
+            lines.append(f"- **Extracted Data**: {ext_str}")
+        if curl:
+            lines.append(f"- **Replay**: `{curl}`")
+        if rem:
+            lines.append(f"- **Remediation**: {rem}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+

@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 from ..analyze import analyze_response
 from ..detection import detect_technologies, detect_waf
+from ..engine import update_session
 from ..models import (
     Cookie,
     Endpoint,
@@ -26,6 +27,7 @@ from ..models import (
 from ..workspace import Workspace
 from .js_extractor import extract_js_endpoints
 from .parsers import (
+    extract_emails,
     extract_forms,
     extract_links,
     extract_meta_refresh,
@@ -104,6 +106,7 @@ async def discover(
     signals: list[Finding] = []
     tech_by_name: dict[str, TechDetection] = {}
     waf_by_name: dict[str, WafDetection] = {}
+    emails_found: set[str] = set()
     errors = 0
     max_urls_reached = False
 
@@ -164,6 +167,7 @@ async def discover(
                             signals,
                             tech_by_name,
                             waf_by_name,
+                            emails_found,
                             parse_js,
                             timeout,
                             verify,
@@ -171,6 +175,7 @@ async def discover(
                             visited,
                             depth,
                             max_urls,
+                            session=session,
                         )
                     except (TimeoutError, httpx.HTTPError, OSError):
                         errors += 1
@@ -194,6 +199,7 @@ async def discover(
         tech_by_name.values(), key=lambda t: (t.category, t.name)
     )
     sitemap.wafs = list(waf_by_name.values())
+    sitemap.emails = sorted(emails_found)
     sitemap.stats = {
         "visited": len(visited),
         "errors": errors,
@@ -203,6 +209,7 @@ async def discover(
         "signals": len(signals),
         "technologies": len(sitemap.technologies),
         "wafs": len(sitemap.wafs),
+        "emails": len(sitemap.emails),
         "max_urls_reached": int(max_urls_reached),
     }
     workspace.save_sitemap(sitemap)
@@ -254,13 +261,15 @@ async def _process(
     signals: list[Finding],
     tech_by_name: dict[str, TechDetection],
     waf_by_name: dict[str, WafDetection],
-    parse_js: bool,
-    timeout: float,
-    verify: bool,
-    queue: asyncio.Queue,
-    visited: set[str],
-    depth: int,
-    max_urls: int,
+    emails_found: set[str] | None = None,
+    parse_js: bool = True,
+    timeout: float = 10.0,
+    verify: bool = True,
+    queue: asyncio.Queue | None = None,
+    visited: set[str] | None = None,
+    depth: int = 2,
+    max_urls: int = 50,
+    session: SessionState | None = None,
 ) -> None:
     resp = await client.get(
         url, headers={"User-Agent": "darco/0.1 (pentest assistant)"}
@@ -352,6 +361,9 @@ async def _process(
                     await queue.put((child, d + 1))
 
     darco_resp = _response_from_httpx(resp)
+    if session is not None:
+        update_session(session, Request(method="GET", url=url), darco_resp)
+
     for tech in detect_technologies(darco_resp, Request(method="GET", url=url)):
         if tech.name not in tech_by_name or (
             not tech_by_name[tech.name].version and tech.version
@@ -360,6 +372,21 @@ async def _process(
     for waf in detect_waf(darco_resp, Request(method="GET", url=url)):
         if waf.name not in waf_by_name:
             waf_by_name[waf.name] = waf
+
+    if emails_found is not None:
+        discovered_emails = extract_emails(soup if is_html(content_type, body) else body)
+        for em in discovered_emails:
+            if em not in emails_found:
+                emails_found.add(em)
+                signals.append(
+                    _finding(
+                        "email_disclosed",
+                        url,
+                        f"Email address disclosed: {em}",
+                        "Review whether exposing this email address is intended or poses a phishing risk.",
+                        "info",
+                    )
+                )
 
     for f in analyze_response(
         Request(method="GET", url=url, source="crawl"), darco_resp
@@ -405,10 +432,15 @@ def _response_from_httpx(resp: httpx.Response) -> Response:
         Cookie(name=c.name, value=c.value, domain=c.domain, path=c.path)
         for c in resp.cookies.jar
     ]
+    items = (
+        resp.headers.multi_items()
+        if hasattr(resp.headers, "multi_items")
+        else resp.headers.items()
+    )
     return Response(
         status_code=resp.status_code,
         reason=resp.reason_phrase or "",
-        headers=[NameValue(name=k, value=v) for k, v in resp.headers.items()],
+        headers=[NameValue(name=k, value=v) for k, v in items],
         body=resp.text,
         body_len=len(resp.content),
         url=str(resp.url),

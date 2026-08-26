@@ -82,6 +82,31 @@ async def test_security_txt_parsing(app):
     assert any(f.type == "missing_security_txt" for f in findings)
 
 
+@pytest.mark.anyio
+async def test_security_txt_expired_naive_and_aware(monkeypatch):
+    import httpx
+
+    sample_sec = (
+        "Contact: security@example.com\n"
+        "Expires: 2020-01-01T00:00:00\n"
+    )
+
+    class MockClient:
+        async def get(self, url):
+            class MockResp:
+                status_code = 200
+                text = sample_sec
+                url = "https://example.com/.well-known/security.txt"
+            return MockResp()
+
+        async def aclose(self):
+            pass
+
+    sec, findings = await inspect_security_txt("https://example.com", client=MockClient())
+    assert sec.present
+    assert any(f.type == "security_txt_expired" for f in findings)
+
+
 # ------------------------------------------------------------------ Runner Tests
 @pytest.mark.anyio
 async def test_passive_enum_runner(app, monkeypatch):

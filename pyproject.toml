@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.0",
     "click>=8.1",
     "beautifulsoup4>=4.12",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

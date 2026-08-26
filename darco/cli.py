@@ -1581,6 +1581,17 @@ def reflect_cmd(
     is_flag=True,
     help="Also probe the password field with bypass payloads",
 )
+@click.option(
+    "--default-creds/--no-default-creds",
+    default=True,
+    help="Probe forms with smart credentials (admin:admin, admin@domain.com, etc.)",
+)
+@click.option(
+    "--email",
+    "emails",
+    multiple=True,
+    help="Target email address to test in smart credentials (repeatable)",
+)
 @click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option(
     "--insecure", is_flag=True, default=False, help="Disable TLS verification"
@@ -1596,11 +1607,13 @@ def login_cmd(
     pass_field,
     extra_payloads,
     test_password,
+    default_creds,
+    emails,
     save,
     insecure,
     timeout,
 ):
-    """Find login forms and test them for SQL authentication-bypass."""
+    """Find login forms and test them for SQL authentication-bypass and smart credentials."""
     from .login import LOGIN_BYPASS_PAYLOADS, audit_login_forms, find_login_forms
     from .models import Finding
     from .render import md_login
@@ -1634,6 +1647,8 @@ def login_cmd(
         forms,
         target=target_val,
         payloads=payloads,
+        test_default_creds=default_creds,
+        emails=emails,
         timeout=timeout,
         verify=not insecure,
         test_password_field=test_password,
@@ -1645,10 +1660,12 @@ def login_cmd(
         ws = _find_workspace(ctx, auto_create_target=target_val)
         findings = []
         for b in result.bypasses:
+            is_cred = b.param == "credentials" and ":" in b.payload
+            ftype = "default_credentials" if is_cred else "login_sqli_bypass"
             findings.append(
                 Finding(
-                    id=f"login-bypass-{b.param}-{b.payload[:16]}",
-                    type="login_sqli_bypass",
+                    id=f"login-{ftype}-{b.payload[:16]}",
+                    type=ftype,
                     severity="high" if b.confidence in ("confirmed", "high") else "medium",
                     location=f"{result.target} ({b.param})",
                     evidence=b.evidence,
@@ -1668,6 +1685,12 @@ def login_cmd(
 @click.option("--password", "pass_field", default=None)
 @click.option("--payload", "extra_payloads", multiple=True)
 @click.option("--test-password", is_flag=True)
+@click.option(
+    "--default-creds/--no-default-creds",
+    default=True,
+    help="Probe forms with common default credentials",
+)
+@click.option("--email", "emails", multiple=True, help="Target email address to test")
 @click.option("--save", is_flag=True)
 @click.option("--insecure", is_flag=True, default=False)
 @click.option("--timeout", type=float, default=10.0)
@@ -1681,11 +1704,13 @@ def auth_cmd(
     pass_field,
     extra_payloads,
     test_password,
+    default_creds,
+    emails,
     save,
     insecure,
     timeout,
 ):
-    """Alias for the login form finder + SQLi bypass audit."""
+    """Alias for the login form finder + SQLi bypass / default credentials audit."""
     ctx.invoke(
         login_cmd,
         target=target,
@@ -1695,6 +1720,130 @@ def auth_cmd(
         pass_field=pass_field,
         extra_payloads=extra_payloads,
         test_password=test_password,
+        default_creds=default_creds,
+        emails=emails,
+        save=save,
+        insecure=insecure,
+        timeout=timeout,
+    )
+
+
+# ------------------------------------------------------------------ admin panel discovery
+@cli.command("admin")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target URL or root domain")
+@click.option(
+    "--default-creds/--no-default-creds",
+    default=True,
+    help="Probe discovered admin login forms with smart credentials and domain emails",
+)
+@click.option(
+    "--email",
+    "emails",
+    multiple=True,
+    help="Target email address to test in smart credentials (repeatable)",
+)
+@click.option("--workers", type=int, default=10, help="Concurrent probe workers")
+@click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
+@click.option(
+    "--insecure", is_flag=True, default=False, help="Disable TLS verification"
+)
+@click.option("--timeout", type=float, default=8.0)
+@click.pass_context
+def admin_cmd(
+    ctx,
+    target,
+    url,
+    default_creds,
+    emails,
+    workers,
+    save,
+    insecure,
+    timeout,
+):
+    """Probe target for administrative panels, backend portals, and management consoles."""
+    from .admin import audit_admin_panels_sync
+    from .render import md_admin
+
+    target_val = url or target
+    if not target_val:
+        cfg = (ctx.obj or {}).get("config")
+        if cfg and cfg.target:
+            target_val = cfg.target
+        else:
+            ws = _find_workspace(ctx, require=False)
+            if ws:
+                try:
+                    target_val = ws.load_config().target
+                except DarcoError:
+                    pass
+    if not target_val:
+        raise DarcoError(
+            "provide a target URL: 'darco admin <url>' or 'darco admin -u <url>'"
+        )
+    if not target_val.startswith(("http://", "https://")):
+        target_val = "http://" + target_val
+
+    combined_emails = list(emails)
+    if not combined_emails:
+        ws = _find_workspace(ctx, require=False)
+        if ws:
+            try:
+                sitemap = ws.load_sitemap()
+                if sitemap and sitemap.emails:
+                    combined_emails.extend(sitemap.emails)
+            except Exception:
+                pass
+
+    report = audit_admin_panels_sync(
+        target_val,
+        emails=combined_emails,
+        test_creds=default_creds,
+        timeout=timeout,
+        verify=not insecure,
+        workers=workers,
+    )
+
+    if save and report.findings:
+        ws = _find_workspace(ctx, auto_create_target=target_val)
+        ws.add_findings(report.findings)
+
+    _emit(ctx, to_json(report), md_admin)
+
+
+@cli.command("admin-finder")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target URL or root domain")
+@click.option(
+    "--default-creds/--no-default-creds",
+    default=True,
+    help="Probe discovered admin login forms with smart credentials",
+)
+@click.option("--email", "emails", multiple=True, help="Target email address to test in credentials")
+@click.option("--workers", type=int, default=10)
+@click.option("--save", is_flag=True)
+@click.option("--insecure", is_flag=True, default=False)
+@click.option("--timeout", type=float, default=8.0)
+@click.pass_context
+def admin_finder_cmd(
+    ctx,
+    target,
+    url,
+    default_creds,
+    emails,
+    workers,
+    save,
+    insecure,
+    timeout,
+):
+    """Alias for administrative panel and management console discovery."""
+    ctx.invoke(
+        admin_cmd,
+        target=target,
+        url=url,
+        default_creds=default_creds,
+        emails=emails,
+        workers=workers,
         save=save,
         insecure=insecure,
         timeout=timeout,
@@ -2023,6 +2172,12 @@ def proxy_cmd(ctx, port, listen, record_only):
     default=False,
     help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
 )
+@click.option(
+    "--default-creds/--no-default-creds",
+    "default_creds",
+    default=True,
+    help="Auto-audit login forms for common default credentials",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -2040,6 +2195,7 @@ def discover_cmd(
     xss,
     upload,
     include_state,
+    default_creds,
     insecure,
     timeout,
 ):
@@ -2075,6 +2231,7 @@ def discover_cmd(
                 sqli=sqli,
                 xss=xss,
                 upload=upload,
+                default_creds=default_creds,
                 include_state_fields=include_state,
                 timeout=timeout,
                 verify=not (cfg.insecure or insecure),
@@ -2134,6 +2291,12 @@ def discover_cmd(
     default=False,
     help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
 )
+@click.option(
+    "--default-creds/--no-default-creds",
+    "default_creds",
+    default=True,
+    help="Auto-audit login forms for common default credentials",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -2151,6 +2314,7 @@ def crawl_cmd(
     xss,
     upload,
     include_state,
+    default_creds,
     insecure,
     timeout,
 ):
@@ -2169,6 +2333,7 @@ def crawl_cmd(
         xss=xss,
         upload=upload,
         include_state=include_state,
+        default_creds=default_creds,
         insecure=insecure,
         timeout=timeout,
     )
@@ -2184,6 +2349,7 @@ def crawl_cmd(
 @click.option("--no-sqli", is_flag=True, help="Disable SQL injection testing")
 @click.option("--no-xss", is_flag=True, help="Disable XSS reflection testing")
 @click.option("--no-upload", is_flag=True, help="Disable file upload security auditing")
+@click.option("--no-default-creds", is_flag=True, help="Disable default credentials testing")
 @click.option("--no-js", is_flag=True)
 @click.option(
     "--include-state",
@@ -2205,12 +2371,13 @@ def scan_cmd(
     no_sqli,
     no_xss,
     no_upload,
+    no_default_creds,
     no_js,
     include_state,
     insecure,
     timeout,
 ):
-    """All-in-one automated pipeline: crawl target, detect WAF/tech, and auto-fuzz/audit for SQLi, XSS, and file uploads."""
+    """All-in-one automated pipeline: crawl target, detect WAF/tech, and auto-fuzz/audit for SQLi, XSS, file uploads, and default credentials."""
     ctx.invoke(
         discover_cmd,
         url_arg=url_arg,
@@ -2225,6 +2392,7 @@ def scan_cmd(
         xss=not no_xss,
         upload=not no_upload,
         include_state=include_state,
+        default_creds=not no_default_creds,
         insecure=insecure,
         timeout=timeout,
     )
@@ -2240,6 +2408,7 @@ def scan_cmd(
 @click.option("--no-sqli", is_flag=True)
 @click.option("--no-xss", is_flag=True)
 @click.option("--no-upload", is_flag=True)
+@click.option("--no-default-creds", is_flag=True)
 @click.option("--no-js", is_flag=True)
 @click.option(
     "--include-state",
@@ -2261,6 +2430,7 @@ def auto_cmd(
     no_sqli,
     no_xss,
     no_upload,
+    no_default_creds,
     no_js,
     include_state,
     insecure,
@@ -2278,6 +2448,7 @@ def auto_cmd(
         no_sqli=no_sqli,
         no_xss=no_xss,
         no_upload=no_upload,
+        no_default_creds=no_default_creds,
         no_js=no_js,
         include_state=include_state,
         insecure=insecure,
@@ -2438,6 +2609,216 @@ def repeat_cmd(
         },
         md_repeat,
     )
+
+
+# ------------------------------------------------------------------ template / attack templates
+@cli.group("template", invoke_without_command=False)
+def template_group():
+    """Attack and vulnerability scanning templates (Nuclei-compatible)."""
+
+
+@template_group.command("run")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target URL to scan")
+@click.option(
+    "-t",
+    "--template",
+    "templates_opt",
+    multiple=True,
+    help="Template YAML file or directory of templates to execute",
+)
+@click.option(
+    "--tags",
+    "tags_opt",
+    multiple=True,
+    help="Filter templates by tag (e.g. git, config, exposure)",
+)
+@click.option(
+    "--severity",
+    "sev_opt",
+    multiple=True,
+    help="Filter templates by severity (info, low, medium, high, critical)",
+)
+@click.option(
+    "--builtin/--no-builtin",
+    default=True,
+    help="Include built-in templates (default: True)",
+)
+@click.option("--workers", type=int, default=10, help="Concurrent template workers")
+@click.option("--timeout", type=float, default=10.0)
+@click.option("--save", is_flag=True, help="Save template findings to workspace")
+@click.option("--insecure", is_flag=True, default=False)
+@click.pass_context
+def template_run_cmd(
+    ctx,
+    target,
+    url,
+    templates_opt,
+    tags_opt,
+    sev_opt,
+    builtin,
+    workers,
+    timeout,
+    save,
+    insecure,
+):
+    """Execute YAML/JSON attack templates against a target URL."""
+    import asyncio
+    from .render import md_template_report
+    from .templates import (
+        load_builtin_templates,
+        load_template,
+        load_templates_from_dir,
+        run_template_scan,
+    )
+
+    target_val = url or target
+    if not target_val:
+        cfg = (ctx.obj or {}).get("config")
+        if cfg and cfg.target:
+            target_val = cfg.target
+        else:
+            ws = _find_workspace(ctx, require=False)
+            if ws:
+                try:
+                    target_val = ws.load_config().target
+                except DarcoError:
+                    pass
+    if not target_val:
+        raise DarcoError(
+            "provide a target URL: 'darco template run <url>' or 'darco template run -u <url>'"
+        )
+    if not target_val.startswith(("http://", "https://")):
+        target_val = "http://" + target_val
+
+    all_templates = []
+    if templates_opt:
+        for t_path in templates_opt:
+            p = Path(t_path)
+            if p.is_dir():
+                all_templates.extend(
+                    load_templates_from_dir(p, tags=list(tags_opt), severities=list(sev_opt))
+                )
+            elif p.is_file():
+                all_templates.append(load_template(p))
+            else:
+                raise DarcoError(f"template path not found: {t_path}")
+    elif builtin:
+        all_templates.extend(
+            load_builtin_templates(tags=list(tags_opt), severities=list(sev_opt))
+        )
+
+    if not all_templates:
+        raise DarcoError("no attack templates loaded to execute")
+
+    report = asyncio.run(
+        run_template_scan(
+            all_templates,
+            target_val,
+            workers=workers,
+            timeout=timeout,
+            verify=not insecure,
+        )
+    )
+
+    if save and report.findings:
+        ws = _find_workspace(ctx, auto_create_target=target_val)
+        ws.add_findings(report.findings)
+
+    _emit(ctx, to_json(report), md_template_report)
+
+
+@template_group.command("list")
+@click.argument("dir_path", required=False, default=None)
+@click.option("--tags", "tags_opt", multiple=True)
+@click.option("--severity", "sev_opt", multiple=True)
+@click.pass_context
+def template_list_cmd(ctx, dir_path, tags_opt, sev_opt):
+    """List available built-in or custom attack templates."""
+    from .templates import load_builtin_templates, load_templates_from_dir
+
+    if dir_path:
+        templates = load_templates_from_dir(
+            dir_path, tags=list(tags_opt), severities=list(sev_opt)
+        )
+    else:
+        templates = load_builtin_templates(tags=list(tags_opt), severities=list(sev_opt))
+
+    summary = [
+        {
+            "id": t.id,
+            "name": t.info.name,
+            "severity": t.info.severity,
+            "tags": t.info.tags,
+            "requests": len(t.requests),
+            "file": t.raw_path,
+        }
+        for t in templates
+    ]
+
+    def render_list(d):
+        lines = [f"# Attack Templates ({len(d.get('templates', []))})", ""]
+        lines.append("| ID | Name | Severity | Tags | Requests |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for t in d.get("templates", []):
+            tags_str = ", ".join(t.get("tags", []))
+            lines.append(
+                f"| `{t.get('id')}` | {t.get('name')} | **{t.get('severity', '').upper()}** | {tags_str} | {t.get('requests')} |"
+            )
+        return "\n".join(lines)
+
+    _emit(ctx, {"count": len(summary), "templates": summary}, render_list)
+
+
+@template_group.command("new")
+@click.argument("template_id")
+@click.option("-n", "--name", default="", help="Human-readable template name")
+@click.option(
+    "-s",
+    "--severity",
+    default="medium",
+    type=click.Choice(["info", "low", "medium", "high", "critical"], case_sensitive=False),
+)
+@click.option("-m", "--method", default="GET", help="HTTP Method (GET, POST, etc.)")
+@click.option("-p", "--path", default="{{BaseURL}}/", help="Target request path")
+@click.option("-w", "--word", "words", multiple=True, help="Words to match in response")
+@click.option("-c", "--status", "status_codes", multiple=True, type=int, help="Status codes to match")
+@click.option("-o", "--out", "out_file", default="", help="Output YAML file path")
+@click.pass_context
+def template_new_cmd(
+    ctx,
+    template_id,
+    name,
+    severity,
+    method,
+    path,
+    words,
+    status_codes,
+    out_file,
+):
+    """Create / scaffold a new YAML attack template."""
+    from .templates import generate_template_scaffold
+
+    yaml_content = generate_template_scaffold(
+        template_id=template_id,
+        name=name,
+        severity=severity,
+        method=method,
+        path=path,
+        words=list(words) if words else None,
+        status_codes=list(status_codes) if status_codes else None,
+    )
+
+    if out_file:
+        p = Path(out_file)
+        p.write_text(yaml_content, encoding="utf-8")
+        _emit(
+            ctx,
+            {"status": "created", "file": str(p), "id": template_id},
+            lambda d: f"# Template Created\n\n- **ID**: `{d.get('id')}`\n- **File**: `{d.get('file')}`\n",
+        )
+    else:
+        click.echo(yaml_content)
 
 
 # ------------------------------------------------------------------ findings

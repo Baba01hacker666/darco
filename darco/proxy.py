@@ -233,8 +233,13 @@ def _serialize(raw: httpx.Response) -> bytes:
         "latin-1"
     )
     header_lines: list[bytes] = []
-    for name, value in raw.headers.items():
-        if name.lower() in HOP_BY_HOP:
+    items = (
+        raw.headers.multi_items()
+        if hasattr(raw.headers, "multi_items")
+        else raw.headers.items()
+    )
+    for name, value in items:
+        if name.lower() in HOP_BY_HOP or name.lower() == "content-length":
             continue
         header_lines.append(f"{name}: {value}\r\n".encode("latin-1"))
     body = raw.content

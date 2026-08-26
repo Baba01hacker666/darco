@@ -187,6 +187,8 @@ class SiteMap(DarcoModel):
     robots: list[str] = Field(default_factory=list)
     technologies: list[TechDetection] = Field(default_factory=list)
     wafs: list[WafDetection] = Field(default_factory=list)
+    emails: list[str] = Field(default_factory=list)
+    admin_panels: list[AdminPanel] = Field(default_factory=list)
 
 
 class DnsRecord(DarcoModel):
@@ -220,6 +222,7 @@ class PassiveReport(DarcoModel):
     security_txt: SecurityTxt | None = None
     technologies: list[TechDetection] = Field(default_factory=list)
     wafs: list[WafDetection] = Field(default_factory=list)
+    emails: list[str] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
 
 
@@ -289,6 +292,29 @@ class XssScanResult(DarcoModel):
     reflections: list[XssReflection] = Field(default_factory=list)
 
 
+class AdminPanel(DarcoModel):
+    path: str
+    url: str
+    status_code: int
+    title: str = ""
+    auth_type: str = "unknown"  # "login_form", "basic_auth", "forbidden", "redirect", "exposed_dashboard", "api"
+    redirect_url: str | None = None
+    login_form: LoginForm | None = None
+    server: str = ""
+    confidence: str = "high"  # "confirmed", "high", "medium", "low"
+    evidence: str = ""
+
+
+class AdminPanelReport(DarcoModel):
+    target: str
+    scanned_paths: int = 0
+    panels_found: list[AdminPanel] = Field(default_factory=list)
+    tested_creds: int = 0
+    bypasses: list[LoginBypassFinding] = Field(default_factory=list)
+    emails_used: list[str] = Field(default_factory=list)
+    findings: list[Finding] = Field(default_factory=list)
+
+
 class AutoScanReport(DarcoModel):
     target: str
     crawled_endpoints: int = 0
@@ -299,8 +325,10 @@ class AutoScanReport(DarcoModel):
     xss_reflections: list[XssReflection] = Field(default_factory=list)
     upload_findings: list[UploadFinding] = Field(default_factory=list)
     login_bypasses: list[LoginBypassFinding] = Field(default_factory=list)
+    admin_panels: list[AdminPanel] = Field(default_factory=list)
     technologies: list[TechDetection] = Field(default_factory=list)
     wafs: list[WafDetection] = Field(default_factory=list)
+    emails: list[str] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
 
 

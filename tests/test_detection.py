@@ -110,9 +110,17 @@ def test_detect_cms_and_frontend():
     names = {t.name for t in techs}
     assert "React" in names
     assert "Next.js" in names
-    assert "jQuery" in names
-    assert "Bootstrap" in names
+    assert any(t.name == "jQuery" and t.version == "3.6.0" for t in techs)
+    assert any(t.name == "Bootstrap" and t.version == "5.3.0" for t in techs)
     assert "HTMX" in names
+
+    # Test jQuery version from inline banner "jQuery v3.7.1"
+    resp_banner = Response(
+        status_code=200,
+        body="/* jQuery v3.7.1 | (c) OpenJS Foundation */",
+    )
+    banner_techs = detect_technologies(resp_banner)
+    assert any(t.name == "jQuery" and t.version == "3.7.1" for t in banner_techs)
 
 
 # ------------------------------------------------------------------ WAF Detection Unit Tests

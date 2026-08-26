@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from ..detection import detect_technologies, detect_waf
+from ..discovery.parsers import extract_emails
 from ..models import Cookie, Finding, NameValue, PassiveReport, Request, Response
 from .crtsh import enumerate_subdomains_crtsh
 from .dns import enumerate_dns
@@ -131,6 +132,33 @@ async def run_passive_enum(
                     report.security_headers = pres_hdrs
                     report.missing_security_headers = miss_hdrs
                     all_findings.extend(hdr_findings)
+
+                # Extract emails from base page
+                page_emails = extract_emails(res.text)
+                for em in page_emails:
+                    if em not in report.emails:
+                        report.emails.append(em)
+
+        # Also pull emails from security.txt contacts
+        if report.security_txt and report.security_txt.contact:
+            for ct in report.security_txt.contact:
+                ct_clean = ct.replace("mailto:", "").strip().lower()
+                for em in extract_emails(ct_clean):
+                    if em not in report.emails:
+                        report.emails.append(em)
+
+        # Create info findings for discovered emails
+        for em in report.emails:
+            all_findings.append(
+                Finding(
+                    id=f"find-email-{em}",
+                    type="email_disclosed",
+                    severity="info",
+                    location=base_url,
+                    evidence=f"Email address disclosed: {em}",
+                    suggestion="Ensure publishing this contact address is intended.",
+                )
+            )
 
     # Attach findings
     report.findings = all_findings

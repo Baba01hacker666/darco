@@ -9,7 +9,7 @@ login to spot successful authentication without valid credentials.
 from __future__ import annotations
 
 from difflib import SequenceMatcher
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -56,6 +56,130 @@ LOGIN_BYPASS_PAYLOADS = (
     "1' OR '1'='1",
     "'='",
 )
+
+# Common default credentials (username, password)
+DEFAULT_CREDENTIALS = (
+    ("admin", "admin"),
+    ("admin", "password"),
+    ("admin", "123456"),
+    ("admin", "admin123"),
+    ("admin", "pass"),
+    ("admin", "password123"),
+    ("administrator", "administrator"),
+    ("administrator", "password"),
+    ("root", "root"),
+    ("root", "toor"),
+    ("root", "password"),
+    ("user", "user"),
+    ("user", "password"),
+    ("test", "test"),
+    ("guest", "guest"),
+)
+
+
+def generate_smart_credentials(
+    target_url: str = "", emails: tuple[str, ...] | list[str] = ()
+) -> list[tuple[str, str]]:
+    """Generate smart credential pairs from common defaults, target domain, and discovered emails."""
+    pairs: list[tuple[str, str]] = list(DEFAULT_CREDENTIALS)
+
+    domain = ""
+    domain_base = ""
+    if target_url:
+        raw = target_url.strip()
+        if not raw.startswith(("http://", "https://")):
+            raw = "http://" + raw
+        host = (urlsplit(raw).hostname or "").lower()
+        domain = host.split(":")[0]
+        parts = [p for p in domain.split(".") if p and p not in ("www", "m", "api", "app")]
+        if len(parts) >= 2:
+            domain_base = parts[-2]
+        elif parts:
+            domain_base = parts[0]
+
+    # Standard administrative email addresses for the target domain (e.g. admin@domain.com)
+    if domain and "." in domain and domain != "localhost":
+        std_users = [
+            "admin",
+            "administrator",
+            "root",
+            "support",
+            "info",
+            "security",
+            "contact",
+            "service",
+            "staff",
+            "user",
+            "test",
+        ]
+        for u in std_users:
+            em = f"{u}@{domain}"
+            pairs.append((em, u))
+            pairs.append((em, "password"))
+            pairs.append((em, "123456"))
+            pairs.append((em, "admin123"))
+            pairs.append((em, "P@ssword1"))
+            if domain_base and len(domain_base) >= 3:
+                pairs.append((em, domain_base))
+                pairs.append((em, f"{domain_base}123"))
+                pairs.append((em, f"{domain_base}2025"))
+                pairs.append((em, f"{domain_base}2026"))
+
+    # Incorporate discovered email addresses
+    for em in emails:
+        em_clean = em.strip().lower()
+        if not em_clean or "@" not in em_clean:
+            continue
+        user_part = em_clean.split("@")[0]
+        # Full email credential pairs
+        pairs.append((em_clean, "password"))
+        pairs.append((em_clean, "123456"))
+        pairs.append((em_clean, "admin"))
+        pairs.append((em_clean, "admin123"))
+        pairs.append((em_clean, "P@ssword1"))
+        pairs.append((em_clean, "Welcome1"))
+        pairs.append((em_clean, "Welcome123"))
+        pairs.append((em_clean, user_part))
+        pairs.append((em_clean, f"{user_part}123"))
+        if domain_base and len(domain_base) >= 3:
+            pairs.append((em_clean, domain_base))
+            pairs.append((em_clean, f"{domain_base}123"))
+
+        # User-part extracted usernames (e.g. john.doe -> john.doe, john)
+        if user_part not in ("admin", "root", "user", "test"):
+            pairs.append((user_part, user_part))
+            pairs.append((user_part, "password"))
+            pairs.append((user_part, "123456"))
+            pairs.append((user_part, f"{user_part}123"))
+            if domain_base and len(domain_base) >= 3:
+                pairs.append((user_part, f"{domain_base}123"))
+            if "." in user_part:
+                sub_user = user_part.split(".")[0]
+                if len(sub_user) >= 2:
+                    pairs.append((sub_user, "password"))
+                    pairs.append((sub_user, f"{sub_user}123"))
+
+    # Domain-derived passwords for admin/root
+    if domain_base and len(domain_base) >= 3:
+        for u in ("admin", "administrator", "root"):
+            pairs.append((u, domain_base))
+            pairs.append((u, f"{domain_base}123"))
+            pairs.append((u, f"{domain_base}2025"))
+            pairs.append((u, f"{domain_base}2026"))
+            pairs.append((u, f"{domain_base}!"))
+            pairs.append((u, f"{domain_base}@123"))
+            pairs.append((u, f"{domain_base.capitalize()}123"))
+            pairs.append((u, f"{domain_base.capitalize()}@123"))
+
+    # Deduplicate while preserving order
+    seen: set[tuple[str, str]] = set()
+    unique_pairs: list[tuple[str, str]] = []
+    for u, p in pairs:
+        key = (u.strip(), p.strip())
+        if key not in seen and key[0] and key[1]:
+            seen.add(key)
+            unique_pairs.append(key)
+    return unique_pairs
 
 _ACCOUNT_REDIRECT_HINTS = ("account", "profile", "dashboard", "home", "my-")
 _LOGGED_IN_HINTS = (
@@ -276,6 +400,9 @@ def audit_login_forms(
     *,
     target: str = "",
     payloads: tuple[str, ...] | None = None,
+    default_credentials: tuple[tuple[str, str], ...] | list[tuple[str, str]] | None = None,
+    emails: tuple[str, ...] | list[str] = (),
+    test_default_creds: bool = True,
     timeout: float = 10.0,
     verify: bool = True,
     test_password_field: bool = False,
@@ -283,7 +410,7 @@ def audit_login_forms(
     password_override: str | None = None,
     client_factory=_default_client,
 ) -> LoginAuditResult:
-    """Audit login forms for SQL authentication-bypass payloads."""
+    """Audit login forms for SQL authentication-bypass payloads and smart default credentials."""
     payloads = payloads or LOGIN_BYPASS_PAYLOADS
     bypasses: list[LoginBypassFinding] = []
     notes: list[str] = []
@@ -316,6 +443,12 @@ def audit_login_forms(
                 data = dict(hidden)
                 data[uname_field] = u
                 data[pwd_field] = p
+                if form.method.upper() == "GET":
+                    return client.get(
+                        form.action,
+                        params=data,
+                        headers={"User-Agent": USER_AGENT},
+                    )
                 return client.post(
                     form.action,
                     data=data,
@@ -326,6 +459,7 @@ def audit_login_forms(
             base = attempt("darco-baseline-user", "darco-wrong-password-42")
             base_sig = _response_signature(base)
 
+            # 1. Test classic SQL login-bypass payloads
             probed_fields = [(uname_field, payloads)]
             if test_password_field and form.password_field:
                 probed_fields.append((pwd_field, payloads))
@@ -365,6 +499,38 @@ def audit_login_forms(
                         )
                     )
 
+            # 2. Test common default and smart domain/email credentials
+            if test_default_creds:
+                target_url_for_creds = target or form.url or form.action
+                creds_list = (
+                    default_credentials
+                    if default_credentials is not None
+                    else generate_smart_credentials(target_url_for_creds, emails=emails)
+                )
+                for u_cand, p_cand in creds_list:
+                    resp = attempt(u_cand, p_cand)
+                    verdict = _is_login_success(resp, base_sig, client)
+                    if not verdict:
+                        continue
+                    indicator, detail = verdict
+                    bypasses.append(
+                        LoginBypassFinding(
+                            param="credentials",
+                            payload=f"{u_cand}:{p_cand}",
+                            confidence="confirmed",
+                            success_indicator=indicator,
+                            evidence=(
+                                f"Default credentials accepted on '{form.action}': "
+                                f"username='{u_cand}', password='{p_cand}' ({detail}) vs baseline failed login "
+                                f"(status {base_sig['status']})."
+                            ),
+                            suggestion=(
+                                f"Change default credentials for user '{u_cand}' immediately "
+                                "and enforce strong, unique authentication credentials."
+                            ),
+                        )
+                    )
+
             if not form.username_field and not form.password_field:
                 notes.append(
                     f"Form at '{form.action}' has no recognizable username/password fields — skipped probing."
@@ -386,6 +552,8 @@ def audit_login_forms(
 
 __all__ = [
     "LOGIN_BYPASS_PAYLOADS",
+    "DEFAULT_CREDENTIALS",
+    "generate_smart_credentials",
     "find_login_forms",
     "login_forms_from_forms",
     "is_login_form",

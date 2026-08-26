@@ -31,6 +31,44 @@ def run(args, cwd, json_only=True):
 
 
 # ------------------------------------------------------------------ Core Scanner Tests
+def test_build_requests_from_sitemap():
+    from darco.models import Endpoint, Form, FormInput, NameValue, SiteMap
+    from darco.scanner import _build_requests_from_sitemap
+
+    sitemap = SiteMap(
+        target="http://example.com",
+        endpoints=[
+            Endpoint(
+                url="http://example.com/items",
+                methods=["GET"],
+                params=[NameValue(name="id", value="42"), NameValue(name="cat", value="books")],
+            ),
+            Endpoint(
+                url="http://example.com/search?q=test",
+                methods=["GET"],
+            ),
+        ],
+        forms=[
+            Form(
+                action="http://example.com/login",
+                method="POST",
+                inputs=[FormInput(name="username", default="admin"), FormInput(name="password")],
+            )
+        ],
+    )
+
+    reqs = _build_requests_from_sitemap(sitemap)
+    assert len(reqs) == 3
+    get_req = next(r for r in reqs if r.url == "http://example.com/items")
+    assert get_req.method == "GET"
+    assert len(get_req.params) == 2
+    assert any(p.name == "id" and p.value == "42" for p in get_req.params)
+
+    post_req = next(r for r in reqs if r.url == "http://example.com/login")
+    assert post_req.method == "POST"
+    assert len(post_req.body_form) == 2
+
+
 @pytest.mark.anyio
 async def test_run_auto_scan(app, tmp_path):
     old_cwd = os.getcwd()

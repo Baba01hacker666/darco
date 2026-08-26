@@ -1,0 +1,24 @@
+id: env-file-disclosure
+info:
+  name: Environment (.env) File Disclosure
+  author: darco
+  severity: critical
+  description: Detects exposed .env files leaking database credentials and API secrets.
+  tags: env,config,exposure,credentials
+  remediation: Ensure .env and hidden dotfiles are not served by the web server.
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.env"
+      - "{{BaseURL}}/.env.local"
+      - "{{BaseURL}}/.env.production"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: regex
+        regex:
+          - "(DB_PASSWORD|APP_KEY|AWS_SECRET_ACCESS_KEY|SECRET_KEY|DATABASE_URL)="
+        part: body

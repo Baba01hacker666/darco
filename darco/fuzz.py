@@ -199,7 +199,16 @@ def _classify(
 
     # body delta vs baseline
     if baseline is not None and baseline.body:
-        ratio = SequenceMatcher(None, baseline.body, resp.body).ratio()
+        base_body = baseline.body
+        resp_body = resp.body or ""
+        if base_body == resp_body:
+            ratio = 1.0
+        elif not resp_body:
+            ratio = 0.0
+        else:
+            ratio = SequenceMatcher(
+                None, base_body[:4000], resp_body[:4000]
+            ).ratio()
         if ratio < 0.85:
             out["anomaly"] = "body_changed"
             out["detail"] = (

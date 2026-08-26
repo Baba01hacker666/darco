@@ -79,6 +79,7 @@ def execute(
     session: SessionState,
     *,
     base_headers: list[NameValue] | None = None,
+    client: httpx.Client | None = None,
 ) -> tuple[httpx.Response, Response, SessionState]:
     """Low-level send. Returns (raw httpx response, darco Response model, updated session).
 
@@ -110,9 +111,7 @@ def execute(
     elif request.body_type == BodyType.RAW:
         content = request.body_raw.encode(request.body_encoding)
 
-    with httpx.Client(
-        verify=request.verify, timeout=request.timeout, trust_env=False, cookies=cookies
-    ) as client:
+    if client is not None:
         resp = client.request(
             request.method,
             url,
@@ -121,7 +120,24 @@ def execute(
             json=json_body,
             data=data,
             follow_redirects=request.follow_redirects,
+            cookies=cookies,
         )
+    else:
+        with httpx.Client(
+            verify=request.verify,
+            timeout=request.timeout,
+            trust_env=False,
+            cookies=cookies,
+        ) as c:
+            resp = c.request(
+                request.method,
+                url,
+                headers=headers,
+                content=content,
+                json=json_body,
+                data=data,
+                follow_redirects=request.follow_redirects,
+            )
 
     body_bytes = resp.content
     try:
@@ -139,10 +155,15 @@ def execute(
             Cookie(name=c.name, value=c.value, domain=c.domain, path=c.path)
         )
 
+    items = (
+        resp.headers.multi_items()
+        if hasattr(resp.headers, "multi_items")
+        else resp.headers.items()
+    )
     response = Response(
         status_code=resp.status_code,
         reason=resp.reason_phrase or "",
-        headers=[NameValue(name=k, value=v) for k, v in resp.headers.items()],
+        headers=[NameValue(name=k, value=v) for k, v in items],
         body=body_text,
         body_len=len(body_bytes),
         url=str(resp.url),
@@ -160,10 +181,13 @@ def send_request(
     session: SessionState,
     *,
     base_headers: list[NameValue] | None = None,
+    client: httpx.Client | None = None,
 ) -> tuple[Response, SessionState]:
     """Send a Request, returning the Response and the updated SessionState."""
     try:
-        _, response, session = execute(request, session, base_headers=base_headers)
+        _, response, session = execute(
+            request, session, base_headers=base_headers, client=client
+        )
         return response, session
     except httpx.HTTPError as exc:
         raise _EngineError(f"request failed: {exc}") from exc

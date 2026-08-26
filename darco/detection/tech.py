@@ -407,7 +407,7 @@ def detect_technologies(
             if m:
                 ver = None
                 if ver_group and m.groups():
-                    ver = m.group(1) if m.group(1) else None
+                    ver = next((g for g in m.groups() if g), None)
                 snippet = m.group(0)[:60].replace("\n", " ").strip()
                 _add(
                     tech_name,

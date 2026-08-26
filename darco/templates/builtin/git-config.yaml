@@ -1,0 +1,24 @@
+id: git-config-disclosure
+info:
+  name: Git Configuration Exposure
+  author: darco
+  severity: high
+  description: Detects publicly accessible .git/config repository files.
+  tags: git,config,exposure,vcs
+  remediation: Restrict access to all .git directories in web server configuration.
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.git/config"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "[core]"
+          - "repositoryformatversion"
+        part: body
+        condition: and
