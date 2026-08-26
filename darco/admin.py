@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import asyncio
 import re
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
 
 from .discovery.parsers import extract_forms
-from .login import audit_login_forms, generate_smart_credentials, is_login_form, _to_login_form
+from .login import (
+    _to_login_form,
+    audit_login_forms,
+    generate_smart_credentials,
+    is_login_form,
+)
 from .models import AdminPanel, AdminPanelReport, Finding, LoginForm
 
 USER_AGENT = "darco/0.1 (admin-panel finder)"
@@ -191,7 +196,7 @@ async def find_admin_panels(
                                     login_form = _to_login_form(f, str(resp.url))
                                     auth_type = "login_form"
                                     break
-                        except Exception:
+                        except (ValueError, TypeError, KeyError):
                             pass
 
                     if auth_type == "unknown":
@@ -276,10 +281,11 @@ async def audit_admin_panels(
     all_findings: list[Finding] = []
 
     for panel in panels:
+        p_clean = panel.path.strip("/")
         if panel.auth_type == "exposed_dashboard":
             all_findings.append(
                 Finding(
-                    id=f"admin-exposed-{panel.path.strip("/")}",
+                    id=f"admin-exposed-{p_clean}",
                     type="admin_panel_exposed",
                     severity="high",
                     location=panel.url,
@@ -290,7 +296,7 @@ async def audit_admin_panels(
         elif panel.auth_type in ("login_form", "basic_auth", "portal_redirect"):
             all_findings.append(
                 Finding(
-                    id=f"admin-panel-{panel.path.strip("/")}",
+                    id=f"admin-panel-{p_clean}",
                     type="admin_panel_found",
                     severity="medium",
                     location=panel.url,
@@ -378,8 +384,8 @@ def audit_admin_panels_sync(
 
 __all__ = [
     "ADMIN_PATHS",
-    "find_admin_panels",
     "audit_admin_panels",
-    "find_admin_panels_sync",
     "audit_admin_panels_sync",
+    "find_admin_panels",
+    "find_admin_panels_sync",
 ]

@@ -181,6 +181,7 @@ def generate_smart_credentials(
             unique_pairs.append(key)
     return unique_pairs
 
+
 _ACCOUNT_REDIRECT_HINTS = ("account", "profile", "dashboard", "home", "my-")
 _LOGGED_IN_HINTS = (
     "logout",
@@ -281,7 +282,7 @@ def find_login_forms(
     finally:
         try:
             client.close()
-        except Exception:  # noqa: BLE001
+        except (httpx.HTTPError, OSError):
             pass
     return forms
 
@@ -439,18 +440,26 @@ def audit_login_forms(
                 except (httpx.HTTPError, OSError):
                     pass
 
-            def attempt(u: str, p: str) -> httpx.Response:
-                data = dict(hidden)
-                data[uname_field] = u
-                data[pwd_field] = p
-                if form.method.upper() == "GET":
+            def attempt(
+                u: str,
+                p: str,
+                *,
+                cur_form=form,
+                cur_hidden=hidden,
+                cur_uname=uname_field,
+                cur_pwd=pwd_field,
+            ) -> httpx.Response:
+                data = dict(cur_hidden)
+                data[cur_uname] = u
+                data[cur_pwd] = p
+                if cur_form.method.upper() == "GET":
                     return client.get(
-                        form.action,
+                        cur_form.action,
                         params=data,
                         headers={"User-Agent": USER_AGENT},
                     )
                 return client.post(
-                    form.action,
+                    cur_form.action,
                     data=data,
                     headers={"User-Agent": USER_AGENT},
                 )
@@ -538,7 +547,7 @@ def audit_login_forms(
     finally:
         try:
             client.close()
-        except Exception:  # noqa: BLE001
+        except (httpx.HTTPError, OSError):
             pass
 
     return LoginAuditResult(
@@ -551,11 +560,11 @@ def audit_login_forms(
 
 
 __all__ = [
-    "LOGIN_BYPASS_PAYLOADS",
     "DEFAULT_CREDENTIALS",
-    "generate_smart_credentials",
-    "find_login_forms",
-    "login_forms_from_forms",
-    "is_login_form",
+    "LOGIN_BYPASS_PAYLOADS",
     "audit_login_forms",
+    "find_login_forms",
+    "generate_smart_credentials",
+    "is_login_form",
+    "login_forms_from_forms",
 ]

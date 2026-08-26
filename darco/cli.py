@@ -1792,7 +1792,7 @@ def admin_cmd(
                 sitemap = ws.load_sitemap()
                 if sitemap and sitemap.emails:
                     combined_emails.extend(sitemap.emails)
-            except Exception:
+            except (DarcoError, OSError, ValueError):
                 pass
 
     report = audit_admin_panels_sync(
@@ -2664,6 +2664,7 @@ def template_run_cmd(
 ):
     """Execute YAML/JSON attack templates against a target URL."""
     import asyncio
+
     from .render import md_template_report
     from .templates import (
         load_builtin_templates,

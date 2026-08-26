@@ -8,12 +8,21 @@ sees (``&#x55;&#x4e;...`` decodes to ``UNION...`` server-side).
 from __future__ import annotations
 
 from .. import xmlinject
-from ..models import BodyType, Request, Response, SessionState, SqliFinding, SqliScanResult
+from ..models import (
+    BodyType,
+    Request,
+    Response,
+    SessionState,
+    SqliFinding,
+    SqliScanResult,
+)
 from ..state_fields import is_state_field
 from . import ScanPlugin, register_plugin
 
 # Payload pairs: (or_probe, true_control, false_control) for the differential
 # that proves the decoded value is concatenated into SQL.
+
+
 def _payloads(orig_val: str) -> tuple[str, str, str] | None:
     if orig_val.isdigit():
         return (

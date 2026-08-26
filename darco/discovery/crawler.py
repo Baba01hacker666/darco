@@ -20,6 +20,7 @@ from ..models import (
     NameValue,
     Request,
     Response,
+    SessionState,
     SiteMap,
     TechDetection,
     WafDetection,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -203,7 +202,7 @@ def load_templates_from_dir(
                 if t.info.severity.lower() not in lower_sevs:
                     continue
             templates.append(t)
-        except Exception:
+        except (DarcoError, OSError, yaml.YAMLError):
             continue
 
     return templates

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import random
 import re
 import string
@@ -15,9 +14,8 @@ from ..models import Finding
 from .models import (
     AttackTemplate,
     TemplateExtractor,
-    TemplateMatchResult,
     TemplateMatcher,
-    TemplateRequest,
+    TemplateMatchResult,
     TemplateScanReport,
 )
 
@@ -163,7 +161,7 @@ def _evaluate_extractors(extractors: list[TemplateExtractor], resp: httpx.Respon
                 for j_key in ext.json_keys:
                     if isinstance(data, dict) and j_key in data:
                         extracted.setdefault(name, []).append(str(data[j_key]))
-            except Exception:
+            except (ValueError, TypeError, KeyError):
                 pass
 
     return extracted
@@ -238,12 +236,13 @@ async def execute_template_on_target(
                     extracted = _evaluate_extractors(req.extractors, resp)
                     evidence = f"Matched {template.info.name} at {req_url} (HTTP {resp.status_code})"
                     if all_matched_words:
-                        evidence += f" [Matched: {", ".join(all_matched_words[:5])}]"
+                        matched_words_str = ", ".join(all_matched_words[:5])
+                        evidence += f" [Matched: {matched_words_str}]"
                     if extracted:
                         ext_str = ", ".join(f"{k}={v}" for k, v in extracted.items())
                         evidence += f" [Extracted: {ext_str}]"
 
-                    curl_cmd = f"curl -k -i -X {req.method} \"{req_url}\""
+                    curl_cmd = f'curl -k -i -X {req.method} "{req_url}"'
 
                     match_res = TemplateMatchResult(
                         template_id=template.id,
@@ -259,10 +258,11 @@ async def execute_template_on_target(
                     )
                     results.append(match_res)
 
+                    norm_tid = template.id.replace("-", "_")
                     findings.append(
                         Finding(
                             id=f"template-{template.id}-{hash(req_url) & 0xffff:04x}",
-                            type=f"template_{template.id.replace("-", "_")}",
+                            type=f"template_{norm_tid}",
                             severity=template.info.severity,
                             location=req_url,
                             evidence=evidence,

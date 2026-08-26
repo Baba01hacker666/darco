@@ -26,14 +26,14 @@ USERS = {"administrator": "54x7t84np1j88qsutk8z"}
 
 def _xml_stock(store_id: str):
     s = store_id.strip()
-    if re.search(r"UNION SELECT", s, re.I):
-        user = list(USERS)[0]
+    if re.search(r"UNION SELECT", s, re.IGNORECASE):
+        user = next(iter(USERS))
         return f"{user}~{USERS[user]}"
-    if re.search(r" OR 1=1", s, re.I):
+    if re.search(r" OR 1=1", s, re.IGNORECASE):
         return "\n".join(f"store {k}: {v}" for k, v in STORES.items())
-    if re.search(r" AND 1=2\b", s, re.I):
+    if re.search(r" AND 1=2\b", s, re.IGNORECASE):
         return None
-    m = re.search(r" AND 1=1\b", s, re.I)
+    m = re.search(r" AND 1=1\b", s, re.IGNORECASE)
     if m:
         lead = re.match(r"\s*(\d+)", s)
         return STORES.get(lead.group(1), 0) if lead else 0

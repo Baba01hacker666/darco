@@ -84,8 +84,6 @@ async def test_security_txt_parsing(app):
 
 @pytest.mark.anyio
 async def test_security_txt_expired_naive_and_aware(monkeypatch):
-    import httpx
-
     sample_sec = (
         "Contact: security@example.com\n"
         "Expires: 2020-01-01T00:00:00\n"

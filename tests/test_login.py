@@ -2,7 +2,6 @@ import json
 import os
 
 import httpx
-import pytest
 from click.testing import CliRunner
 
 from darco.cli import cli

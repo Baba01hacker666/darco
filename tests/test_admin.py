@@ -1,13 +1,12 @@
 import json
 import os
-import pytest
-from click.testing import CliRunner
-import httpx
 
-from darco.admin import find_admin_panels, audit_admin_panels, ADMIN_PATHS
+import httpx
+from click.testing import CliRunner
+
+from darco.admin import find_admin_panels
 from darco.cli import cli
 from darco.login import generate_smart_credentials
-from darco.models import AdminPanel, AdminPanelReport, LoginForm
 
 
 class CliResult:
@@ -55,7 +54,6 @@ def test_generate_smart_credentials_domain_and_emails():
 # ------------------------------------------------------------------ admin panel discovery
 class MockAdminTransport(httpx.AsyncBaseTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        url_str = str(request.url)
         path = request.url.path
 
         if path in ("/admin", "/admin/"):

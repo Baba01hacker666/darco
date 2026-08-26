@@ -89,8 +89,7 @@ def get_plugin(name: str) -> ScanPlugin | None:
 
 
 # Import built-in plugins so they register themselves.
-from . import xml_inject  # noqa: E402,F401
-
+from . import xml_inject  # noqa: F401
 
 __all__ = [
     "ScanPlugin",

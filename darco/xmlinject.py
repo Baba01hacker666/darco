@@ -29,7 +29,7 @@ _XML_WS = set(" \t\r\n")
 class XmlParam:
     """A leaf element value extracted from an XML request body."""
 
-    __slots__ = ("name", "value", "path")
+    __slots__ = ("name", "path", "value")
 
     def __init__(self, name: str, value: str, path: str):
         self.name = name
@@ -43,7 +43,7 @@ class XmlParam:
 class XmlProbeResult:
     """Outcome of the behavioral "is this really XML?" probe battery."""
 
-    __slots__ = ("param", "decodes_entities", "parses_xml", "requires_xml", "probes")
+    __slots__ = ("decodes_entities", "param", "parses_xml", "probes", "requires_xml")
 
     def __init__(self, param: str):
         self.param = param
@@ -65,7 +65,7 @@ def looks_like_xml(request: Request) -> bool:
     if "xml" in content_type_of(request):
         return True
     body = request.body_raw.lstrip()
-    return body.startswith("<?xml") or body.startswith("<")
+    return body.startswith(("<?xml", "<"))
 
 
 def xml_entity_encode(text: str) -> str:

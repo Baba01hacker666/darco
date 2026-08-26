@@ -4,7 +4,7 @@ import os
 from click.testing import CliRunner
 
 from darco.cli import cli
-from darco.models import BodyType, NameValue, Request, Response, SessionState
+from darco.models import BodyType, NameValue, Request, Response
 from darco.sqli import scan_sqli
 
 
@@ -383,5 +383,3 @@ def test_cli_sqli_alias(app, tmp_path):
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "param" in data["tested_params"]
-
-

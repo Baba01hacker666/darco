@@ -1,6 +1,9 @@
 import asyncio
 
+from bs4 import BeautifulSoup
+
 from darco.discovery.crawler import discover
+from darco.discovery.parsers import extract_emails, extract_forms
 
 
 def test_discover_builds_sitemap(app, workspace):
@@ -60,9 +63,6 @@ def test_extract_js_endpoints_xhr():
 
 
 def test_extract_forms_select_option_fallback():
-    from bs4 import BeautifulSoup
-    from darco.discovery.parsers import extract_forms
-
     html = """
     <form action="/submit" method="POST">
         <select name="role">
@@ -86,9 +86,6 @@ def test_extract_forms_select_option_fallback():
 
 
 def test_extract_emails_from_html():
-    from bs4 import BeautifulSoup
-    from darco.discovery.parsers import extract_emails
-
     html = """
     <html><body>
         <p>Contact our team at <a href="mailto:security@mycompany.org?subject=Bug">Email Us</a></p>

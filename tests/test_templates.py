@@ -1,18 +1,16 @@
 import asyncio
 import json
 import os
-from pathlib import Path
-import pytest
-from click.testing import CliRunner
+
 import httpx
+from click.testing import CliRunner
 
 from darco.cli import cli
 from darco.templates import (
-    load_template_from_string,
-    load_builtin_templates,
     execute_template_on_target,
-    run_template_scan,
     generate_template_scaffold,
+    load_builtin_templates,
+    load_template_from_string,
 )
 
 
@@ -197,14 +195,7 @@ requests:
           - "DB_PASSWORD"
 """
     tmpl = load_template_from_string(yaml_text)
-
-    async def _run():
-        report = await run_template_scan(
-            [tmpl],
-            "http://mock.test",
-        )
-        # using real or mock
-    # Just testing loader & scaffold
+    assert tmpl.id == "env-test"
     assert tmpl.info.severity == "critical"
 
 
@@ -276,4 +267,3 @@ requests:
     assert len(data["matched_results"]) == 1
     assert data["matched_results"][0]["template_id"] == "test-login-check"
     assert len(data["findings"]) == 1
-

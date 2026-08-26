@@ -1294,5 +1294,3 @@ def md_template_report(d: dict) -> str:
         lines.append("")
 
     return "\n".join(lines)
-
-
