@@ -65,17 +65,39 @@ def sqli_notes(data: dict) -> dict:
     if len(vulns) > 6:
         highlights.append(f"…and {len(vulns) - 6} more signal(s).")
 
+    xml_vulns = [
+        v
+        for v in vulns
+        if v.get("injection_type") in ("xml_entity_decoding", "xml_encoded_sqli")
+    ]
+    if xml_vulns:
+        highlights.append(
+            "XML channel confirmed — the endpoint parses XML and expands `&#x..;` "
+            "character references, so SQL keywords can be smuggled past "
+            "signature-based WAFs. Replay the `Verify manually` curl to confirm."
+        )
+
     next_steps = [
         "Replay the probe payloads in a browser/curl and look for the DB error, empty page, or extra rows.",
     ]
     top = vulns[0]
-    curl = _curl_for(
-        target,
-        top.get("param") or "",
-        top.get("param_type") or "query",
-        top.get("payload") or "",
-    )
-    next_steps.append(f"Fastest manual check: `{curl}`")
+    if any(v.get("param_type") == "xml" for v in vulns):
+        top_curl = next((v.get("curl") for v in vulns if v.get("curl")), "")
+        if top_curl:
+            next_steps.append(f"Fastest manual check (XML channel): `{top_curl}`")
+        else:
+            next_steps.append(
+                "This is an XML-body endpoint: replay the entity-encoded payload with "
+                "`-H 'Content-Type: application/xml' --data-binary '<storeId>&#x..;</storeId>'`."
+            )
+    else:
+        curl = _curl_for(
+            target,
+            top.get("param") or "",
+            top.get("param_type") or "query",
+            top.get("payload") or "",
+        )
+        next_steps.append(f"Fastest manual check: `{curl}`")
     if any(v.get("injection_type") == "sql_logic" for v in vulns):
         next_steps.append(
             "The OR-logic finding means hidden/unreleased rows may be retrievable — "

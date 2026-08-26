@@ -181,6 +181,14 @@ insecure = false
   `csrf-token`) are captured from responses and replayed on subsequent requests.
   `--strip-session` removes cookies and auth headers for a single request — the
   primitive behind session-removal bypasses.
+- **Scan plugins**: registered plugins contribute parameters and channel-specific
+  probes to `darco sql` via `collect_params` / `after_param` / `after_scan`
+  hooks (`darco plugins` lists them, `--plugin` / `--skip-plugin` control them).
+  See `docs/plugins.md`.
+- **XML WAF bypass**: the `xml_inject` plugin behaviorally confirms an endpoint
+  parses XML (unclosed tag, numeric char ref, undefined entity, non-XML body)
+  and tests entity-encoded SQLi — `&#x55;&#x4e;...` reaches SQL as `UNION` while
+  the WAF only saw character references. Findings include a replay curl.
 - **Smart fuzz engine**: `darco fuzz` (and `send --fuzz`) builds variants with
   zero configuration — it flips boolean params, **puts words into numeric fields**
   (type confusion), tries boundary IDs (`0`, `-1`, `9999999999`, `NaN`), and

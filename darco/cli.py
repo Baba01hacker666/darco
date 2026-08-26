@@ -269,6 +269,21 @@ def version_cmd():
     click.echo(f"darco {__version__}")
 
 
+# ------------------------------------------------------------------ plugins
+@cli.command("plugins")
+@click.pass_context
+def plugins_cmd(ctx):
+    """List registered scan plugins (name, description, status)."""
+    from .plugins import registered_plugins
+    from .render import md_plugins
+
+    rows = [
+        {"name": p.name, "description": p.description}
+        for p in registered_plugins()
+    ]
+    _emit(ctx, {"plugins": rows}, md_plugins)
+
+
 # ------------------------------------------------------------------ init
 @cli.command("init")
 @click.argument("target_arg", required=False, default=None)
@@ -363,7 +378,7 @@ def ingest_curl(ctx, command, dry_run):
     from .render import md_store
 
     ws = _find_workspace(ctx)
-    request = parse_curl(" ".join(command))
+    request = parse_curl(list(command))
     _emit(ctx, _store_parsed(ws, request, dry_run), md_store)
 
 
@@ -1235,8 +1250,23 @@ def info_cmd(
 @click.option(
     "--insecure", is_flag=True, default=False, help="Disable TLS verification"
 )
+@click.option(
+    "--plugin",
+    "only_plugins",
+    multiple=True,
+    help="Run only these scan plugins (repeatable; see `darco plugins`)",
+)
+@click.option(
+    "--skip-plugin",
+    "skip_plugins",
+    multiple=True,
+    help="Disable a scan plugin (repeatable)",
+)
 @click.pass_context
-def sql_cmd(ctx, target, url, from_id, param, save, include_state, insecure):
+def sql_cmd(
+    ctx, target, url, from_id, param, save, include_state, insecure,
+    only_plugins, skip_plugins,
+):
     """SQL injection testing: syntax break, quote balancing, arithmetic evaluation, and boolean differential."""
     from .models import Finding, Request
     from .render import md_sqli
@@ -1295,6 +1325,8 @@ def sql_cmd(ctx, target, url, from_id, param, save, include_state, insecure):
         session=session,
         param_filter=param,
         include_state_fields=include_state,
+        only_plugins=list(only_plugins) if only_plugins else None,
+        skip_plugins=list(skip_plugins) if skip_plugins else None,
     )
 
     if save:
@@ -1334,8 +1366,13 @@ def sql_cmd(ctx, target, url, from_id, param, save, include_state, insecure):
     help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
 )
 @click.option("--insecure", is_flag=True, default=False)
+@click.option("--plugin", "only_plugins", multiple=True)
+@click.option("--skip-plugin", "skip_plugins", multiple=True)
 @click.pass_context
-def sqli_cmd(ctx, target, url, from_id, param, save, include_state, insecure):
+def sqli_cmd(
+    ctx, target, url, from_id, param, save, include_state, insecure,
+    only_plugins, skip_plugins,
+):
     """Alias for SQL injection testing."""
     ctx.invoke(
         sql_cmd,
@@ -1346,6 +1383,8 @@ def sqli_cmd(ctx, target, url, from_id, param, save, include_state, insecure):
         save=save,
         include_state=include_state,
         insecure=insecure,
+        only_plugins=only_plugins,
+        skip_plugins=skip_plugins,
     )
 
 

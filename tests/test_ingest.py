@@ -165,3 +165,45 @@ def test_har_parsing():
     assert req.body_type == BodyType.JSON
     assert req.body_json == {"k": 2}
     assert {c.name for c in req.cookies} == {"sid"}
+
+
+def test_parse_curl_accepts_token_list():
+    """CLI nargs -> parse_curl(list) must preserve argument boundaries."""
+    req = parse_curl(
+        [
+            "curl",
+            "-X",
+            "POST",
+            "http://h/stock",
+            "-H",
+            "Content-Type: application/xml",
+            "--data-binary",
+            "<storeId>1</storeId>",
+        ]
+    )
+    assert req.method == "POST"
+    assert req.body_type == BodyType.RAW
+    assert req.body_raw == "<storeId>1</storeId>"
+    assert (
+        next(h for h in req.headers if h.name == "Content-Type").value
+        == "application/xml"
+    )
+
+
+def test_curl_data_binary_always_raw_even_with_equals():
+    """--data-binary must not be form-interpreted, even with '=' in the payload."""
+    req = parse_curl(
+        [
+            "curl",
+            "-X",
+            "POST",
+            "http://h/stock",
+            "--data-binary",
+            '<?xml version="1.0" encoding="UTF-8"?><stockCheck><storeId>1</storeId></stockCheck>',
+        ]
+    )
+    assert req.body_type == BodyType.RAW
+    assert req.body_raw == (
+        '<?xml version="1.0" encoding="UTF-8"?><stockCheck><storeId>1</storeId></stockCheck>'
+    )
+    assert req.body_form == []

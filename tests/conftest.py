@@ -1,6 +1,8 @@
 import json
+import re
 import sys
 import threading
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -13,6 +15,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from darco.workspace import Workspace
 
 PASSWORD = "hunter2"
+
+# XML stock-check backend (mirrors PortSwigger "SQLi with filter bypass via
+# XML encoding"): parses <storeId> as XML, expands character references, then
+# concatenates the decoded value into SQL. A WAF inspects the raw body bytes
+# and blocks obvious keywords — entity-encoded payloads slip past it.
+STORES = {"1": 853, "2": 12, "3": 5}
+USERS = {"administrator": "54x7t84np1j88qsutk8z"}
+
+
+def _xml_stock(store_id: str):
+    s = store_id.strip()
+    if re.search(r"UNION SELECT", s, re.I):
+        user = list(USERS)[0]
+        return f"{user}~{USERS[user]}"
+    if re.search(r" OR 1=1", s, re.I):
+        return "\n".join(f"store {k}: {v}" for k, v in STORES.items())
+    if re.search(r" AND 1=2\b", s, re.I):
+        return None
+    m = re.search(r" AND 1=1\b", s, re.I)
+    if m:
+        lead = re.match(r"\s*(\d+)", s)
+        return STORES.get(lead.group(1), 0) if lead else 0
+    if s in STORES:
+        return STORES[s]
+    if s.isdigit():
+        return STORES.get(s, 0)
+    return 0
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -156,6 +185,31 @@ const ws = new WebSocket('/ws/events');""",
                 "headers": {k: v for k, v in self.headers.items()},
             }
             self._send(200, json.dumps(payload), ctype="application/json")
+        elif path == "/product/stock":
+            ctype = self.headers.get("Content-Type", "")
+            if "xml" not in ctype.lower() and not body.lstrip().startswith("<"):
+                self._send(400, "XML parsing error", ctype="text/plain")
+                return
+            if re.search(r"(?i)union|select|\sor\s|--", body):
+                self._send(403, "Attack detected", ctype="text/plain")
+                return
+            try:
+                root = ET.fromstring(body)
+            except ET.ParseError:
+                self._send(400, "XML parsing error", ctype="text/plain")
+                return
+            store_id = ""
+            for el in root.iter():
+                if el.tag.rsplit("}", 1)[-1] == "storeId":
+                    store_id = el.text or ""
+                    break
+            stock = _xml_stock(store_id)
+            if stock is None:
+                self._send(
+                    404, json.dumps({"error": "no stock"}), ctype="application/json"
+                )
+            else:
+                self._send(200, json.dumps({"stock": stock}), ctype="application/json")
         else:
             self._send(404, "not found")
 

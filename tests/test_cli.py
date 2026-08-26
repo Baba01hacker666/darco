@@ -153,3 +153,31 @@ def test_cli_discover_auto_workspace(app, tmp_path):
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)
     assert "endpoints" in data
+
+
+def test_cli_ingest_preserves_header_value(tmp_path):
+    """-H 'Content-Type: application/xml' must not lose its value at the CLI."""
+    run(["init", "http://target.test"], tmp_path)
+    result = run(
+        [
+            "ingest",
+            "curl",
+            "curl",
+            "-X",
+            "POST",
+            "http://target.test/product/stock",
+            "-H",
+            "Content-Type: application/xml",
+            "--data-binary",
+            "<storeId>1</storeId>",
+            "--dry-run",
+        ],
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    data = json.loads(result.stdout)
+    req = data["request"]
+    assert req["body_type"] == "raw"
+    assert req["body_raw"] == "<storeId>1</storeId>"
+    ct = [h for h in req["headers"] if h["name"] == "Content-Type"]
+    assert ct and ct[0]["value"] == "application/xml"

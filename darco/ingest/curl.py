@@ -155,9 +155,14 @@ BOOL_FLAGS = {
 }
 
 
-def parse_curl(command: str, *, source: str = "curl") -> Request:
-    """Parse a curl command string into a darco Request."""
-    tokens = _tokenize(command)
+def parse_curl(command: str | list[str], *, source: str = "curl") -> Request:
+    """Parse a curl command into a darco Request.
+
+    Accepts the full command string (shell quoting is honored by ``_tokenize``)
+    or a pre-tokenized list (e.g. click nargs), which preserves argument
+    boundaries like ``-H 'Content-Type: application/xml'`` exactly.
+    """
+    tokens = _tokenize(command) if isinstance(command, str) else list(command)
     if not tokens:
         raise DarcoError("empty curl command")
 
@@ -174,9 +179,10 @@ def parse_curl(command: str, *, source: str = "curl") -> Request:
     data_kind: str | None = None
     get_mode = False
     head_mode = False
+    raw_binary = False
 
     def apply_value_flag(flag: str, arg: str) -> None:
-        nonlocal method, explicit_method, timeout
+        nonlocal method, explicit_method, timeout, raw_binary
         if flag in ("-X", "--request"):
             method = arg.upper()
             explicit_method = True
@@ -184,6 +190,8 @@ def parse_curl(command: str, *, source: str = "curl") -> Request:
             headers.append(_parse_header(arg))
         elif flag in ("-d", "--data", "--data-raw", "--data-binary"):
             data_items.append(arg)
+            if flag == "--data-binary":
+                raw_binary = True
             nonlocal_data_kind()
         elif flag == "--data-urlencode":
             data_items.append(_encode_data_urlencode(arg))
@@ -306,13 +314,20 @@ def parse_curl(command: str, *, source: str = "curl") -> Request:
             _ensure_content_type(headers, "application/json")
         else:
             joined = "&".join(data_items)
-            pairs = parse_qsl(joined, keep_blank_values=True)
-            if joined and all("=" in p for p in joined.split("&")):
-                body_type = BodyType.FORM
-                body_form = [NameValue(name=k, value=v) for k, v in pairs]
-            else:
+            if raw_binary:
+                # curl semantics: --data-binary sends bytes verbatim, no form
+                # interpretation (XML like '<?xml version="1.0"...' contains
+                # '=' but is a raw body, not a form).
                 body_type = BodyType.RAW
                 body_raw = joined
+            else:
+                pairs = parse_qsl(joined, keep_blank_values=True)
+                if joined and all("=" in p for p in joined.split("&")):
+                    body_type = BodyType.FORM
+                    body_form = [NameValue(name=k, value=v) for k, v in pairs]
+                else:
+                    body_type = BodyType.RAW
+                    body_raw = joined
             _ensure_content_type(headers, "application/x-www-form-urlencoded")
 
     return Request(

@@ -225,8 +225,8 @@ class PassiveReport(DarcoModel):
 
 class SqliFinding(DarcoModel):
     param: str
-    param_type: str  # "query", "form", "json"
-    injection_type: str  # "error_based", "quote_balancing", "arithmetic_evaluation", "boolean_differential", "status_anomaly"
+    param_type: str  # "query", "form", "json", "xml"
+    injection_type: str  # "error_based", "quote_balancing", "arithmetic_evaluation", "boolean_differential", "status_anomaly", "sql_logic", "xml_entity_decoding", "xml_encoded_sqli"
     db_engine: str | None = None
     confidence: str  # "confirmed", "high", "medium", "potential"
     payload: str
@@ -234,6 +234,7 @@ class SqliFinding(DarcoModel):
     payload_status: int
     evidence: str
     suggestion: str
+    curl: str = ""  # copy-paste replay command for manual verification
 
 
 class SqliScanResult(DarcoModel):

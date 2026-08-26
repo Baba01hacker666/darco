@@ -76,7 +76,9 @@ structured evidence (diffs, findings, site maps) back as JSON.
    `run_fuzz` fires them concurrently and classifies anomalies vs baseline.
 6. **Audit** (`darco/sqli.py`, `darco/xss.py`, `darco/login.py`,
    `darco/upload.py`): active SQLi/XSS/auth-bypass/upload probes over a
-   baseline response, returning typed result models.
+   baseline response, returning typed result models. `scan_sqli` dispatches
+   to registered scan plugins (`darco/plugins/`) for extra parameters and
+   channel-specific probes — see [plugins.md](plugins.md).
 7. **Analyze** (`darco/analyze.py`, `darco/diff.py`, `darco/discovery/`):
    derive findings, diffs, and site maps from recorded requests/responses.
 
@@ -85,6 +87,8 @@ structured evidence (diffs, findings, site maps) back as JSON.
 | Module | Command | What it probes |
 | --- | --- | --- |
 | `darco/sqli.py` | `darco sql` | Quote balancing, arithmetic evaluation, boolean differential, OR-logic / hidden data (`sql_logic`), DB error leaks |
+| `darco/plugins/` | `darco plugins` | Scan plugin registry + hooks; `xml_inject` = XML-body detection & entity-encoded SQLi (WAF bypass) |
+| `darco/xmlinject.py` | — | Low-level XML parse / entity-encode / behavioral probes used by `xml_inject` |
 | `darco/xss.py` | `darco xss` | Parameter reflection, context classification, encoding audit |
 | `darco/login.py` | `darco login` / `darco auth` | Login form discovery + SQL auth-bypass payloads |
 | `darco/upload.py` | `darco upload` | File-upload MIME/extension/header defenses |

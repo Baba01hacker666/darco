@@ -179,7 +179,7 @@ async def run_auto_scan(
                 pass
 
         # B. SQL Injection Heuristic Scanner
-        if sqli and (req.params or req.body_form or req.body_json):
+        if sqli and (req.params or req.body_form or req.body_json or req.body_raw):
             try:
                 sqli_res = scan_sqli(
                     req,

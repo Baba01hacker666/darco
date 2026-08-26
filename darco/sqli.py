@@ -13,6 +13,7 @@ from .models import (
     SqliScanResult,
 )
 from .state_fields import is_state_field, is_state_validation_error
+from .xmlinject import replace_element_text
 
 # Database Error Signatures: (Engine Name, Regex Pattern)
 DB_ERRORS: list[tuple[str, re.Pattern]] = [
@@ -95,7 +96,11 @@ def _similarity(a: str, b: str) -> float:
 
 
 def _clone_and_mutate_param(
-    base: Request, param_type: str, param_name: str, new_val: str
+    base: Request,
+    param_type: str,
+    param_name: str,
+    new_val: str,
+    orig_val: str | None = None,
 ) -> Request:
     """Clone request and substitute parameter value."""
     req = base.model_copy(deep=True)
@@ -119,6 +124,10 @@ def _clone_and_mutate_param(
         d = dict(req.body_json)
         d[param_name] = new_val
         req.body_json = d
+    elif param_type == "xml":
+        req.body_raw = replace_element_text(
+            req.body_raw, param_name, orig_val, new_val
+        )
     return req
 
 
@@ -141,8 +150,18 @@ def scan_sqli(
     baseline_response: Response | None = None,
     param_filter: str | None = None,
     include_state_fields: bool = False,
+    only_plugins: list[str] | None = None,
+    skip_plugins: list[str] | None = None,
 ) -> SqliScanResult:
-    """Run active SQL injection differential and heuristic checks on a request."""
+    """Run active SQL injection differential and heuristic checks on a request.
+
+    Core syntax/boolean/logic tests run for every parameter; registered scan
+    plugins (see ``darco/plugins``) can contribute extra parameters and run
+    channel-specific probes via ``after_param``.
+    """
+    from .plugins import active_plugins
+
+    plugins = active_plugins(only=only_plugins, skip=skip_plugins)
     if session is None:
         session = SessionState()
 
@@ -196,6 +215,15 @@ def scan_sqli(
             ):
                 params_to_test.append(("json", k, str(v) if v is not None else ""))
 
+    for plug in plugins:
+        params_to_test.extend(
+            plug.collect_params(
+                request,
+                include_state_fields=include_state_fields,
+                param_filter=param_filter,
+            )
+        )
+
     result = SqliScanResult(
         target=request.url,
         tested_params=[p[1] for p in params_to_test],
@@ -207,7 +235,9 @@ def scan_sqli(
 
         # --- Test A: Syntax Break Probe (Quote Injection) ---
         break_payload = f"{orig_val}'" if orig_val else "'"
-        req_break = _clone_and_mutate_param(request, p_type, p_name, break_payload)
+        req_break = _clone_and_mutate_param(
+            request, p_type, p_name, break_payload, orig_val=orig_val
+        )
         resp_break = _send(req_break, session)
 
         if resp_break:
@@ -234,7 +264,9 @@ def scan_sqli(
 
             # Check 2: Quote Balancing (param' breaks vs param'' fixes)
             pair_payload = f"{orig_val}''" if orig_val else "''"
-            req_pair = _clone_and_mutate_param(request, p_type, p_name, pair_payload)
+            req_pair = _clone_and_mutate_param(
+                request, p_type, p_name, pair_payload, orig_val=orig_val
+            )
             resp_pair = _send(req_pair, session)
 
             break_differs = (
@@ -289,7 +321,9 @@ def scan_sqli(
         # --- Test B: Arithmetic Evaluation (for numeric parameters) ---
         if is_numeric and num_val > 0:
             arith_expr = f"{num_val + 1}-1"
-            req_arith = _clone_and_mutate_param(request, p_type, p_name, arith_expr)
+            req_arith = _clone_and_mutate_param(
+                request, p_type, p_name, arith_expr, orig_val=orig_val
+            )
             resp_arith = _send(req_arith, session)
 
             if resp_arith and resp_arith.status_code == base_status:
@@ -298,7 +332,7 @@ def scan_sqli(
                     # Negative control test: evaluate (num_val + 10) to confirm it is not just static page
                     control_expr = f"{num_val + 99999}"
                     req_ctrl = _clone_and_mutate_param(
-                        request, p_type, p_name, control_expr
+                        request, p_type, p_name, control_expr, orig_val=orig_val
                     )
                     resp_ctrl = _send(req_ctrl, session)
 
@@ -331,8 +365,12 @@ def scan_sqli(
             true_payload = f"{orig_val}' AND '1'='1"
             false_payload = f"{orig_val}' AND '1'='2"
 
-        req_true = _clone_and_mutate_param(request, p_type, p_name, true_payload)
-        req_false = _clone_and_mutate_param(request, p_type, p_name, false_payload)
+        req_true = _clone_and_mutate_param(
+            request, p_type, p_name, true_payload, orig_val=orig_val
+        )
+        req_false = _clone_and_mutate_param(
+            request, p_type, p_name, false_payload, orig_val=orig_val
+        )
 
         resp_true = _send(req_true, session)
         resp_false = _send(req_false, session)
@@ -376,7 +414,7 @@ def scan_sqli(
             ]
             for or_payload in or_probes:
                 req_or = _clone_and_mutate_param(
-                    request, p_type, p_name, or_payload
+                    request, p_type, p_name, or_payload, orig_val=orig_val
                 )
                 resp_or = _send(req_or, session)
                 if not resp_or or resp_or.status_code != base_status:
@@ -387,7 +425,7 @@ def scan_sqli(
 
                 ctrl_payload = f"{orig_val}' AND 1=2--"
                 req_ctrl = _clone_and_mutate_param(
-                    request, p_type, p_name, ctrl_payload
+                    request, p_type, p_name, ctrl_payload, orig_val=orig_val
                 )
                 resp_ctrl = _send(req_ctrl, session)
                 ctrl_shrinks = resp_ctrl is not None and (
@@ -411,6 +449,20 @@ def scan_sqli(
                         )
                     )
                     break
+
+        for plug in plugins:
+            plug.after_param(
+                request,
+                session,
+                p_type,
+                p_name,
+                orig_val,
+                baseline_response,
+                result,
+            )
+
+    for plug in plugins:
+        plug.after_scan(request, session, result)
 
     return result
 

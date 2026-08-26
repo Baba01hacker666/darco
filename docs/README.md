@@ -18,6 +18,7 @@ you care about.
 | [discovery.md](discovery.md) | The async crawler: BFS, seeds, parsing, endpoint inventory |
 | [fuzz.md](fuzz.md) | Smart fuzz engine: build_variants, background dispatch, anomaly classification |
 | [login.md](login.md) | Login form finder + SQLi auth-bypass audit (`darco login`) |
+| [plugins.md](plugins.md) | Scan plugin system: hooks, registry, `xml_inject` WAF-bypass example |
 | [development.md](development.md) | Extending Darco: conventions, testing, adding features |
 
 ## Quick map
@@ -31,6 +32,8 @@ darco/
   mutate.py       request transforms (strip-session, flip-param, ...)
   fuzz.py         smart variant engine: build_variants, run_fuzz, _classify
   login.py        login form finder + SQL auth-bypass audit
+  plugins/        scan plugin registry + built-ins (xml_inject)
+  xmlinject.py    XML body parsing/entity-encoding primitives
   guidance.py     human-readable debrief notes for structured output
   diff.py         response diffing with volatile-token normalization
   analyze.py      signal heuristics -> Finding objects

@@ -65,6 +65,25 @@ def md_store(d: dict) -> str:
     return f"# Stored `{rid}`\n\n" + _md_request(d["request"])
 
 
+def md_plugins(d: dict) -> str:
+    rows = d.get("plugins") or []
+    lines = ["# Scan Plugins", ""]
+    if not rows:
+        lines.append("_No plugins registered._")
+        return "\n".join(lines)
+    lines.append(f"**{len(rows)} registered plugin(s)**")
+    lines.append("")
+    for r_ in rows:
+        name = r_.get("name") or "?"
+        desc = r_.get("description") or ""
+        lines.append(f"- **`{name}`** — {desc}")
+    lines.append("")
+    lines.append(
+        "Enable/disable per scan with `darco sql --plugin NAME` / `--skip-plugin NAME`."
+    )
+    return "\n".join(lines)
+
+
 def md_send(d: dict) -> str:
     rid = d.get("id")
     resp = d.get("response") or {}
@@ -622,6 +641,9 @@ def md_sqli(d: dict) -> str:
             lines.append(f"- **Evidence**: {evidence}")
         if suggestion:
             lines.append(f"- **Remediation**: {suggestion}")
+        curl = v.get("curl") if isinstance(v, dict) else getattr(v, "curl", "")
+        if curl:
+            lines.append(f"- **Verify manually**: `{curl}`")
         lines.append("")
 
     return "\n".join(lines)

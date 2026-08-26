@@ -97,14 +97,19 @@ verbatim (`to_json(model)`).
 
 ### `SqliScanResult` (`darco sql`)
 `target`, `tested_params`, `vulnerabilities` — `list[SqliFinding]`:
-`param`, `param_type` (`query`/`form`/`json`), `injection_type`
+`param`, `param_type` (`query`/`form`/`json`/`xml`), `injection_type`
 (`error_based`, `quote_balancing`, `arithmetic_evaluation`,
-`boolean_differential`, `sql_logic`, `status_anomaly`), `db_engine`,
-`confidence` (`confirmed`/`high`/`medium`/`potential`), `payload`,
-`baseline_status`, `payload_status`, `evidence`, `suggestion`.
+`boolean_differential`, `sql_logic`, `status_anomaly`,
+`xml_entity_decoding`, `xml_encoded_sqli`), `db_engine`, `confidence`
+(`confirmed`/`high`/`medium`/`potential`), `payload`, `baseline_status`,
+`payload_status`, `evidence`, `suggestion`, `curl` (copy-paste replay
+command for manual verification).
 
 - `sql_logic` = OR-injection (`' OR 1=1--`) expanded the result set while the
   `AND 1=2` control shrank/errored it — filter bypass / hidden-data retrieval.
+- `xml_entity_decoding` / `xml_encoded_sqli` come from the `xml_inject` scan
+  plugin (XML-body endpoints + entity-encoded WAF bypass) — see
+  [plugins.md](plugins.md).
 - Framework state fields (`__VIEWSTATE`, CSRF tokens, …) are skipped unless
   `include_state_fields=True`; state-validation error pages are never
   classified as SQLi.
