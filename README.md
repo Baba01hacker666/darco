@@ -87,6 +87,10 @@ darco https://app.test/admin
 darco -u https://app.test/admin
 darco fuzz https://app.test/user?id=5        # auto-mutate & report anomalies
 
+# Login discovery + SQL auth-bypass audit (no browser needed)
+darco login https://app.test/                # finds /login, /auth, ... and probes
+darco auth https://app.test/login --test-password
+
 # Smart defaults: fuzz is automatic on --fuzz (flip booleans, type-confuse
 # numbers with words, boundary IDs, SQL/XSS probes) and fires in the background
 darco https://app.test/user?id=5 --fuzz
@@ -104,9 +108,10 @@ darco fuzz          # reads ./darco.toml
 | `darco <id>` / `darco send [id\|url]` | Send or replay a request (with mutations like `--strip-session`, `--flip-param`) |
 | `darco scan <url>` / `darco auto <url>` | Full automated pipeline: crawl site, detect WAF/tech, auto-fuzz & audit all endpoints/forms for SQLi & XSS |
 | `darco crawl [url]` / `darco discover [url]` | Crawl & parse: endpoints, forms, JS refs, robots, technologies, WAFs, signals (add `--fuzz` to auto-audit) |
-| `darco sql [url\|id]` | SQL injection testing: syntax break (`'`), quote balancing (`''`), arithmetic (`2-1`), and boolean differential |
+| `darco sql [url\|id]` | SQL injection testing: syntax break (`'`), quote balancing (`''`), arithmetic (`2-1`), boolean differential, and OR-logic / hidden-data retrieval (`' OR 1=1--`) |
 | `darco xss [url\|id]` | XSS & reflection audit: canary probing, HTML/attribute/script context detection, character encoding audit |
 | `darco upload [url\|id]` | File upload security audit: SVG (XSS vector), HTML, MIME bypass, and storage header defenses |
+| `darco login [url]` / `darco auth [url]` | Find login forms (incl. common auth paths) and test them for SQL auth-bypass payloads (`' OR 1=1--`, `administrator'--`) |
 | `darco js [url\|file]` / `darco apis` | Extract API routes, GraphQL queries, parameters, secrets, and webpack chunks from JavaScript |
 | `darco passive [domain\|url]` | Passive OSINT: DNS records, SPF/DMARC email posture, CT log subdomains, security.txt, security headers |
 | `darco detect [url\|id]` | Detect WAF shields and web technologies (servers, frameworks, CMS, frontend) |
@@ -118,6 +123,18 @@ darco fuzz          # reads ./darco.toml
 | `darco ingest raw <file>` | Parse a raw HTTP request (Burp style) |
 | `darco ingest har <file>` | Import requests from a HAR file |
 | `darco repeat <id> --count N` | Replay a stored request N times (rate-limit / OTP loops) |
+
+> Framework state fields (`__VIEWSTATE`, `__EVENTVALIDATION`, CSRF tokens, …)
+> are skipped by default during SQLi/XSS/fuzz audits — tampering with them only
+> triggers framework MAC/validation errors on ASP.NET-style targets. Pass
+> `--include-state` to `sql`, `xss`, `fuzz`, `scan`, or `discover` to audit
+> them explicitly.
+
+Every audit command (`sql`, `xss`, `fuzz`, `scan`, `login`, `detect`,
+`passive`, `discover`, `analyze`) appends a human-readable **`debrief`** block
+to its output — a plain-English verdict, highlights, and manual verification
+steps (including copy-paste curl commands), so results read like a teammate's
+notes rather than raw tool dumps. The structured JSON fields are unchanged.
 | `darco diff <idA> <idB>` | Structured response diff (status/headers/body/JSON) |
 | `darco analyze <id> [--save]` | Signals: reflections, error leaks, rate limits, CAPTCHA, auth cookies, WAF & tech detections; `--save` persists to `findings.json` |
 | `darco findings list\|clear` | Inspect or wipe the workspace's accumulated findings |

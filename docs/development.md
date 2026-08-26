@@ -25,6 +25,9 @@ UV_CACHE_DIR=/tmp/uv-cache uv pip install --python .venv/bin/python -e . pytest
 | New finding heuristic | `darco/analyze.py` |
 | New crawl signal | `darco/discovery/crawler.py` or `darco/analyze.py` |
 | New fuzz variant | `darco/fuzz.py` (`build_variants`) + `tests/test_fuzz.py` |
+| New SQLi heuristic | `darco/sqli.py` (`scan_sqli`, add a test in `tests/test_sqli.py`) |
+| New audit command | `darco/<name>.py` (typed result model in `models.py`) + CLI command in `darco/cli.py` + md renderer in `darco/render.py` + debrief notes in `darco/guidance.py` |
+| New login/auth logic | `darco/login.py` + `tests/test_login.py` |
 | New CLI command | `darco/cli.py` (markdown to stdout by default, `--json` for the agent contract; `DarcoError` on failure) |
 | Persistent findings | `darco/analyze.py` (`analyze --save`) + `darco/cli.py` (`findings` group) + `workspace.add_findings` |
 | Proxy behavior | `darco/proxy.py` (keep `_serialize` hop-by-hop rules intact) |
@@ -43,6 +46,10 @@ UV_CACHE_DIR=/tmp/uv-cache uv pip install --python .venv/bin/python -e . pytest
    capture must stay in one place (or the proxy/crawler/CLI diverge).
 7. **No guardrails.** Do not add scope enforcement, rate limiting, or approval
    gates to Darco core without an explicit user request.
+8. **Human debriefs come last, never instead.** Add `build_notes` support in
+   `darco/guidance.py` for new audit commands so output stays both machine-
+   readable and human-helpful. Do not overwrite existing result fields
+   (`debrief` is the reserved key — model fields named `notes` must survive).
 
 ## Testing
 
@@ -56,6 +63,9 @@ UV_CACHE_DIR=/tmp/uv-cache uv pip install --python .venv/bin/python -e . pytest
     cookie bucket), `/csrf` (X-CSRF-Token header),
   - `/debug?enabled=` boolean reflection, `/error` (stack trace),
     `/captcha`, `/robots.txt`, `/js/app.js` (endpoint refs), `/echo`.
+- **Audit tests** (`test_sqli.py`, `test_xss.py`, `test_login.py`,
+  `test_upload.py`, `test_fuzz.py`, `test_guidance.py`) cover heuristics and
+  output contracts with mocked HTTP plus the fixture app.
 - These bind `127.0.0.1` sockets — sandboxed environments may need bind/network
   permission.
 - Add a test for **every** new parser flag, mutation op, and signal heuristic;

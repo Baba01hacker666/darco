@@ -32,6 +32,8 @@ Module: `darco/discovery/` — `crawler.py` (orchestration), `parsers.py`
    - if HTML: parse links + meta-refresh (same-origin only, enqueued up to
      `--depth`), forms (action/method/inputs incl. hidden fields + CAPTCHA
      marker), and `script[src]` (same-origin JS fetched and scanned),
+   - forms with a `type=password` input raise a `login_form_detected`
+     signal (`medium`) pointing at the form action,
    - page-level signals from `analyze_response` + path heuristics.
 5. **Limits**: `--depth` (default 3), `--max-urls` (default 500, stops
    enqueueing new children once reached — in-flight queue is drained, not

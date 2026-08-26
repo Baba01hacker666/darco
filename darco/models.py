@@ -242,6 +242,33 @@ class SqliScanResult(DarcoModel):
     vulnerabilities: list[SqliFinding] = Field(default_factory=list)
 
 
+class LoginForm(DarcoModel):
+    url: str = ""
+    action: str
+    method: str = "POST"
+    username_field: str | None = None
+    password_field: str | None = None
+    csrf_field: str | None = None
+    captcha: bool = False
+
+
+class LoginBypassFinding(DarcoModel):
+    param: str
+    payload: str
+    confidence: str  # "confirmed", "high", "medium", "low"
+    success_indicator: str
+    evidence: str
+    suggestion: str
+
+
+class LoginAuditResult(DarcoModel):
+    target: str
+    forms_found: list[LoginForm] = Field(default_factory=list)
+    tested_forms: int = 0
+    bypasses: list[LoginBypassFinding] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
 class XssReflection(DarcoModel):
     param: str
     param_type: str  # "query", "form", "json", "header"
@@ -270,6 +297,7 @@ class AutoScanReport(DarcoModel):
     sqli_vulnerabilities: list[SqliFinding] = Field(default_factory=list)
     xss_reflections: list[XssReflection] = Field(default_factory=list)
     upload_findings: list[UploadFinding] = Field(default_factory=list)
+    login_bypasses: list[LoginBypassFinding] = Field(default_factory=list)
     technologies: list[TechDetection] = Field(default_factory=list)
     wafs: list[WafDetection] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)

@@ -12,6 +12,7 @@ from .models import (
     SqliFinding,
     SqliScanResult,
 )
+from .state_fields import is_state_field, is_state_validation_error
 
 # Database Error Signatures: (Engine Name, Regex Pattern)
 DB_ERRORS: list[tuple[str, re.Pattern]] = [
@@ -139,6 +140,7 @@ def scan_sqli(
     session: SessionState | None = None,
     baseline_response: Response | None = None,
     param_filter: str | None = None,
+    include_state_fields: bool = False,
 ) -> SqliScanResult:
     """Run active SQL injection differential and heuristic checks on a request."""
     if session is None:
@@ -176,16 +178,22 @@ def scan_sqli(
     ] = []  # (param_type, param_name, original_val)
 
     for p in request.params:
-        if param_filter is None or p.name == param_filter:
+        if (param_filter is None or p.name == param_filter) and (
+            include_state_fields or not is_state_field(p.name)
+        ):
             params_to_test.append(("query", p.name, p.value or ""))
 
     for p in request.body_form:
-        if param_filter is None or p.name == param_filter:
+        if (param_filter is None or p.name == param_filter) and (
+            include_state_fields or not is_state_field(p.name)
+        ):
             params_to_test.append(("form", p.name, p.value or ""))
 
     if isinstance(request.body_json, dict):
         for k, v in request.body_json.items():
-            if param_filter is None or k == param_filter:
+            if (param_filter is None or k == param_filter) and (
+                include_state_fields or not is_state_field(k)
+            ):
                 params_to_test.append(("json", k, str(v) if v is not None else ""))
 
     result = SqliScanResult(
@@ -203,6 +211,7 @@ def scan_sqli(
         resp_break = _send(req_break, session)
 
         if resp_break:
+            state_err = is_state_validation_error(resp_break.body or "")
             # Check 1: Explicit Database Error (Confirmed Error-based SQLi)
             db_err = _match_db_error(resp_break.body or "")
             if db_err:
@@ -234,7 +243,8 @@ def scan_sqli(
                 or _similarity(base_body, resp_break.body or "") < 0.85
             )
 
-            if resp_pair and break_differs:
+            quote_balanced = False
+            if resp_pair and break_differs and not state_err:
                 pair_matches = (
                     resp_pair.status_code == base_status
                     and _similarity(base_body, resp_pair.body or "") >= 0.90
@@ -253,10 +263,15 @@ def scan_sqli(
                             suggestion=f"Parameter '{p_name}' escapes into a SQL string context. Parameterize the query.",
                         )
                     )
-                    continue
+                    quote_balanced = True
 
             # Check 3: Status Anomaly on quote injection (e.g. 200 -> 500 / 404 / 503)
-            if base_status == 200 and resp_break.status_code in (500, 502, 503):
+            if (
+                not quote_balanced
+                and base_status == 200
+                and resp_break.status_code in (500, 502, 503)
+                and not state_err
+            ):
                 result.vulnerabilities.append(
                     SqliFinding(
                         param=p_name,
@@ -270,7 +285,6 @@ def scan_sqli(
                         suggestion=f"Inspect server logs for unhandled SQL exceptions on parameter '{p_name}'.",
                     )
                 )
-                continue
 
         # --- Test B: Arithmetic Evaluation (for numeric parameters) ---
         if is_numeric and num_val > 0:
@@ -308,7 +322,6 @@ def scan_sqli(
                                 suggestion=f"Numeric parameter '{p_name}' is concatenated directly into SQL without sanitization or parameter binding.",
                             )
                         )
-                        continue
 
         # --- Test C: Boolean-based Differential Evaluation ---
         if is_numeric:
@@ -350,6 +363,54 @@ def scan_sqli(
                         suggestion=f"Parameter '{p_name}' is susceptible to boolean-based blind SQL injection. Use parameterized queries.",
                     )
                 )
+
+        # --- Test D: OR-based logic injection (hidden-data / filter bypass) ---
+        # 'OR 1=1--' expands the result set, and the 'AND 1=2--' control
+        # shrinks or errors it — proof the value is concatenated into a
+        # conditional WHERE clause (classic hidden-data retrieval).
+        if orig_val:
+            or_probes = [
+                f"{orig_val}' OR 1=1--",
+                f"{orig_val}' OR '1'='1",
+                f'{orig_val}" OR "1"="1',
+            ]
+            for or_payload in or_probes:
+                req_or = _clone_and_mutate_param(
+                    request, p_type, p_name, or_payload
+                )
+                resp_or = _send(req_or, session)
+                if not resp_or or resp_or.status_code != base_status:
+                    continue
+                or_len = resp_or.body_len
+                if or_len <= base_len + max(30, int(base_len * 0.10)):
+                    continue
+
+                ctrl_payload = f"{orig_val}' AND 1=2--"
+                req_ctrl = _clone_and_mutate_param(
+                    request, p_type, p_name, ctrl_payload
+                )
+                resp_ctrl = _send(req_ctrl, session)
+                ctrl_shrinks = resp_ctrl is not None and (
+                    resp_ctrl.status_code != base_status
+                    or resp_ctrl.body_len
+                    < base_len - max(30, int(base_len * 0.10))
+                )
+                if ctrl_shrinks:
+                    result.vulnerabilities.append(
+                        SqliFinding(
+                            param=p_name,
+                            param_type=p_type,
+                            injection_type="sql_logic",
+                            db_engine=None,
+                            confidence="high",
+                            payload=or_payload,
+                            baseline_status=base_status,
+                            payload_status=resp_or.status_code,
+                            evidence=f"OR-injection '{or_payload}' expanded the response (len {base_len} -> {or_len}), while the 'AND 1=2' control '{ctrl_payload}' shrank/errored it (status {resp_ctrl.status_code}, len {resp_ctrl.body_len}) — the parameter is concatenated into conditional SQL and can bypass filters.",
+                            suggestion=f"Parameter '{p_name}' is concatenated into a SQL WHERE clause. Use parameterized queries to prevent logic injection and hidden-data disclosure.",
+                        )
+                    )
+                    break
 
     return result
 

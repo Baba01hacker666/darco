@@ -5,7 +5,7 @@ import pytest
 from click.testing import CliRunner
 
 from darco.cli import cli
-from darco.models import NameValue, Response
+from darco.models import DnsRecord, Finding, NameValue, Response
 from darco.passive.headers import audit_security_headers
 from darco.passive.runner import run_passive_enum
 from darco.passive.security_txt import inspect_security_txt
@@ -84,22 +84,47 @@ async def test_security_txt_parsing(app):
 
 # ------------------------------------------------------------------ Runner Tests
 @pytest.mark.anyio
-async def test_passive_enum_runner():
+async def test_passive_enum_runner(app, monkeypatch):
+    # Keep the runner hermetic: canned DNS results plus the local fixture for
+    # security.txt / base-page fetches, so the test never depends on the
+    # internet (DoH providers, crt.sh) and stays fast offline.
+    canned_records = [
+        DnsRecord(record_type="A", name="127.0.0.1", value="127.0.0.1", ttl=300),
+        DnsRecord(record_type="TXT", name="127.0.0.1", value="v=spf1 -all", ttl=300),
+    ]
+    canned_findings = [
+        Finding(
+            id="find-dns-dmarc-missing",
+            type="missing_dmarc",
+            severity="medium",
+            location="_dmarc.example.com",
+            evidence="No DMARC (v=DMARC1) record found in DNS TXT",
+            suggestion="Add a DMARC TXT record.",
+        )
+    ]
+
+    async def fake_enumerate_dns(domain, client=None):
+        return canned_records, canned_findings
+
+    monkeypatch.setattr(
+        "darco.passive.runner.enumerate_dns", fake_enumerate_dns
+    )
     report = await run_passive_enum(
-        "example.com",
-        subdomains=False,  # Skip external CT logs in unit test
+        f"{app}/",
+        subdomains=False,
         dns=True,
         security_txt=True,
         headers=True,
     )
-    assert report.domain == "example.com"
-    assert len(report.dns_records) > 0
-    assert len(report.findings) > 0
+    assert report.domain == "127.0.0.1"
+    assert any(r.record_type == "A" for r in report.dns_records)
+    assert report.ip_addresses == ["127.0.0.1"]
+    assert any(f.type == "missing_dmarc" for f in report.findings)
 
 
 # ------------------------------------------------------------------ CLI Commands
 def test_cli_passive_command(app, tmp_path):
-    res = run(["passive", f"{app}/echo", "--no-subdomains"], tmp_path)
+    res = run(["passive", f"{app}/echo", "--no-subdomains", "--no-dns"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "target" in data

@@ -303,6 +303,19 @@ async def _process(
         for form in extract_forms(soup, base):
             forms.append(form)
             action = normalize_url(form.action, base)
+            if any(inp.type == "password" for inp in form.inputs) and not any(
+                s.type == "login_form_detected" and s.location == action
+                for s in signals
+            ):
+                signals.append(
+                    _finding(
+                        "login_form_detected",
+                        action or url,
+                        "Login form discovered (username/password fields)",
+                        "Login forms are prime targets: test SQLi auth bypass with `darco login`, weak creds, and missing CSRF.",
+                        "medium",
+                    )
+                )
             if action and same_origin(start, action):
                 action = _endpoint_key(action)
                 ep = endpoint_by_url.setdefault(

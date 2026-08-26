@@ -16,6 +16,9 @@ structured evidence (diffs, findings, site maps) back as JSON.
   explicitly strips them (`--strip-session`).
 - **Mutations are non-destructive.** Every transform produces a *copy* of a
   request with lineage (`parent_id` + description list), never an in-place edit.
+- **Output is annotated, not replaced.** Structured JSON stays the contract;
+  `darco/guidance.py` adds a human-readable `debrief` block (verdict,
+  highlights, next steps) so output also reads like a teammate's notes.
 
 ## Module map
 
@@ -71,8 +74,24 @@ structured evidence (diffs, findings, site maps) back as JSON.
 5. **Fuzz** (`darco/fuzz.py`): `build_variants` turns a request into smart
    mutations (flip booleans, type-confuse numerics, boundary IDs, SQL/XSS);
    `run_fuzz` fires them concurrently and classifies anomalies vs baseline.
-5. **Analyze** (`darco/analyze.py`, `darco/diff.py`, `darco/discovery/`):
+6. **Audit** (`darco/sqli.py`, `darco/xss.py`, `darco/login.py`,
+   `darco/upload.py`): active SQLi/XSS/auth-bypass/upload probes over a
+   baseline response, returning typed result models.
+7. **Analyze** (`darco/analyze.py`, `darco/diff.py`, `darco/discovery/`):
    derive findings, diffs, and site maps from recorded requests/responses.
+
+## Audit modules
+
+| Module | Command | What it probes |
+| --- | --- | --- |
+| `darco/sqli.py` | `darco sql` | Quote balancing, arithmetic evaluation, boolean differential, OR-logic / hidden data (`sql_logic`), DB error leaks |
+| `darco/xss.py` | `darco xss` | Parameter reflection, context classification, encoding audit |
+| `darco/login.py` | `darco login` / `darco auth` | Login form discovery + SQL auth-bypass payloads |
+| `darco/upload.py` | `darco upload` | File-upload MIME/extension/header defenses |
+| `darco/fuzz.py` | `darco fuzz` | Smart mutation dispatch + anomaly classification |
+| `darco/state_fields.py` | — | Shared skip-list for framework state fields + validation-error signatures |
+
+`darco/guidance.py` turns any of these result models into a `debrief` block.
 
 ## Key cross-cutting rules
 

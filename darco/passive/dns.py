@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import socket
 
 import httpx
 
 from ..models import DnsRecord, Finding
+
+# Aggregate wall-clock budget for the whole DNS enumeration. Per-provider
+# timeouts stack up when offline (8 record types x 2 DoH endpoints), so cap
+# the total instead of relying on each individual request timing out.
+DNS_ENUM_TIMEOUT = 15.0
+SOCKET_FALLBACK_TIMEOUT = 3.0
 
 # DNS Record Type Mapping
 DNS_TYPES = {
@@ -82,23 +89,37 @@ async def enumerate_dns(
         own_client = True
 
     try:
-        # 1. Query standard record types
-        for rtype in ["A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "CAA"]:
-            recs = await query_doh_record(client, domain, rtype)
-            records.extend(recs)
+        # 1. Query all record types (plus DMARC) concurrently and bound the
+        #    aggregate so one unreachable DoH provider can't stall the run.
+        async def _query(rtype: str, name: str) -> list[DnsRecord]:
+            return await query_doh_record(client, name, rtype)
 
-        # 2. Query DMARC record specifically
-        dmarc_domain = f"_dmarc.{domain}"
-        dmarc_recs = await query_doh_record(client, dmarc_domain, "TXT")
-        records.extend(dmarc_recs)
+        queries = [
+            _query(rtype, domain)
+            for rtype in ["A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "CAA"]
+        ]
+        queries.append(_query("TXT", f"_dmarc.{domain}"))
+        try:
+            async with asyncio.timeout(DNS_ENUM_TIMEOUT):
+                batches = await asyncio.gather(*queries, return_exceptions=True)
+        except TimeoutError:
+            batches = []
+        for batch in batches:
+            if isinstance(batch, list):
+                records.extend(batch)
 
-        # Fallback local socket resolution if DoH failed for A records
+        # 2. Fallback local socket resolution if DoH failed for A records.
+        #    gethostbyname_ex can block for seconds, so run it on a thread
+        #    with a bounded timeout.
         if not any(r.record_type == "A" for r in records):
             try:
-                ips = socket.gethostbyname_ex(domain)[2]
+                async with asyncio.timeout(SOCKET_FALLBACK_TIMEOUT):
+                    _, _, ips = await asyncio.to_thread(
+                        socket.gethostbyname_ex, domain
+                    )
                 for ip in ips:
                     records.append(DnsRecord(record_type="A", name=domain, value=ip))
-            except socket.gaierror:
+            except (socket.gaierror, TimeoutError):
                 pass
 
         # 3. Analyze SPF / DMARC / CAA Posture

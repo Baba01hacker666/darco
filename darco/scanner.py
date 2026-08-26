@@ -114,6 +114,7 @@ async def run_auto_scan(
     sqli: bool = True,
     xss: bool = True,
     upload: bool = True,
+    include_state_fields: bool = False,
     timeout: float = 10.0,
     verify: bool = True,
 ) -> AutoScanReport:
@@ -150,7 +151,9 @@ async def run_auto_scan(
         # A. Smart Parameter Fuzzing
         if fuzz and (req.params or req.body_form or req.body_json):
             try:
-                fuzz_res = run_fuzz(req, session)
+                fuzz_res = run_fuzz(
+                    req, session, include_state_fields=include_state_fields
+                )
                 for anom in fuzz_res.get("results", []):
                     anom["target_url"] = req.url
                     anom["method"] = req.method
@@ -178,7 +181,11 @@ async def run_auto_scan(
         # B. SQL Injection Heuristic Scanner
         if sqli and (req.params or req.body_form or req.body_json):
             try:
-                sqli_res = scan_sqli(req, session=session)
+                sqli_res = scan_sqli(
+                    req,
+                    session=session,
+                    include_state_fields=include_state_fields,
+                )
                 for v in sqli_res.vulnerabilities:
                     report.sqli_vulnerabilities.append(v)
                     all_new_findings.append(
@@ -201,7 +208,11 @@ async def run_auto_scan(
         # C. XSS & Reflection Auditor
         if xss and (req.params or req.body_form or req.body_json):
             try:
-                xss_res = scan_xss(req, session=session)
+                xss_res = scan_xss(
+                    req,
+                    session=session,
+                    include_state_fields=include_state_fields,
+                )
                 for r in xss_res.reflections:
                     if r.confidence in ("confirmed", "high", "medium"):
                         report.xss_reflections.append(r)
@@ -219,6 +230,38 @@ async def run_auto_scan(
                                 suggestion=r.suggestion,
                             )
                         )
+            except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+                pass
+
+    # Step 2b: Audit discovered login forms for SQL auth bypass
+    if sqli:
+        from .login import audit_login_forms, login_forms_from_forms
+
+        login_forms = login_forms_from_forms(sitemap.forms)
+        if login_forms:
+            try:
+                login_res = audit_login_forms(
+                    login_forms,
+                    target=url,
+                    timeout=timeout,
+                    verify=verify,
+                )
+                report.login_bypasses = login_res.bypasses
+                for b in login_res.bypasses:
+                    all_new_findings.append(
+                        Finding(
+                            id=f"login-bypass-{b.param}-{b.payload[:16]}",
+                            type="login_sqli_bypass",
+                            severity=(
+                                "high"
+                                if b.confidence in ("confirmed", "high")
+                                else "medium"
+                            ),
+                            location=f"{url} ({b.param})",
+                            evidence=b.evidence,
+                            suggestion=b.suggestion,
+                        )
+                    )
             except (httpx.HTTPError, OSError, TimeoutError, ValueError):
                 pass
 

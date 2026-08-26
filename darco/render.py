@@ -720,6 +720,7 @@ def md_scan(d: dict) -> str:
     lines.append(f"- **Fuzzing Anomalies**: `{len(anoms)}`")
     lines.append(f"- **SQLi Vulnerabilities**: `{len(sqli)}`")
     lines.append(f"- **XSS Reflections**: `{len(xss)}`")
+    lines.append(f"- **Login Bypass Candidates**: `{len(d.get('login_bypasses') or [])}`")
     lines.append(f"- **Total Security Findings**: `{len(findings)}`")
     lines.append("")
 
@@ -801,6 +802,39 @@ def md_scan(d: dict) -> str:
                 else getattr(r, "suggestion", "")
             )
             lines.append(f"### **[{conf.upper()}]** Parameter `{param}` in `{ctx}`")
+            lines.append(f"- **Evidence**: {ev}")
+            lines.append(f"- **Remediation**: {sugg}")
+            lines.append("")
+
+    # Login Bypass Candidates
+    login_bypasses = d.get("login_bypasses") or []
+    if login_bypasses:
+        lines.append(f"## 🔑 Login Bypass Candidates ({len(login_bypasses)})")
+        lines.append("")
+        for b in login_bypasses:
+            param = b.get("param") if isinstance(b, dict) else getattr(b, "param", "")
+            payload = (
+                b.get("payload") if isinstance(b, dict) else getattr(b, "payload", "")
+            )
+            conf = (
+                b.get("confidence")
+                if isinstance(b, dict)
+                else getattr(b, "confidence", "medium")
+            )
+            ind = (
+                b.get("success_indicator")
+                if isinstance(b, dict)
+                else getattr(b, "success_indicator", "")
+            )
+            ev = (
+                b.get("evidence") if isinstance(b, dict) else getattr(b, "evidence", "")
+            )
+            sugg = (
+                b.get("suggestion")
+                if isinstance(b, dict)
+                else getattr(b, "suggestion", "")
+            )
+            lines.append(f"### **[{conf.upper()}]** `{param}` ← `{payload}` (`{ind}`)")
             lines.append(f"- **Evidence**: {ev}")
             lines.append(f"- **Remediation**: {sugg}")
             lines.append("")
@@ -1022,5 +1056,68 @@ def md_js(d: dict) -> str:
         for raw in findings:
             f = Finding.model_validate(raw) if isinstance(raw, dict) else raw
             lines.append(_md_finding(f))
+
+    return "\n".join(lines)
+
+
+def md_login(d: dict) -> str:
+    target = d.get("target") or ""
+    forms = d.get("forms_found") or []
+    tested = d.get("tested_forms") or 0
+    bypasses = d.get("bypasses") or []
+    notes = d.get("notes") or []
+
+    lines = [f"# Login Form Audit: `{target}`", ""]
+    lines.append(f"- **Login Forms Found**: `{len(forms)}`")
+    lines.append(f"- **Forms Tested**: `{tested}`")
+    lines.append(f"- **Auth-Bypass Candidates**: `{len(bypasses)}`")
+    lines.append("")
+
+    if not forms:
+        lines.append("_No login forms found on the target or common login paths._")
+        lines.append("")
+        lines.append(
+            "Next: check JS-rendered SPAs (`darco js`), subdomains, or app-specific "
+            "auth routes manually."
+        )
+        return "\n".join(lines)
+
+    lines.append("## Login Forms")
+    lines.append("")
+    for f in forms:
+        u = f.get("username_field") or "?"
+        p = f.get("password_field") or "?"
+        csrf = f.get("csrf_field") or "none"
+        captcha = "⚠️ captcha" if f.get("captcha") else ""
+        lines.append(
+            f"- `{f.get('method', 'POST')}` `{f.get('action')}` — user=`{u}`, "
+            f"pass=`{p}`, csrf=`{csrf}` {captcha}"
+        )
+    lines.append("")
+
+    if not bypasses:
+        lines.append("## Result")
+        lines.append("")
+        lines.append(
+            "_No SQL auth-bypass signals — payloads behaved like a normal failed login. "
+            "Weak/default credentials and password-reset flows are still worth testing manually._"
+        )
+    else:
+        lines.append("## Bypass Candidates")
+        lines.append("")
+        for b in bypasses:
+            badge = f"**[{b.get('confidence', 'medium').upper()}]**"
+            lines.append(f"### {badge} `{b.get('param')}` ← `{b.get('payload')}`")
+            lines.append(f"- **Signal**: `{b.get('success_indicator')}`")
+            lines.append(f"- **Evidence**: {b.get('evidence')}")
+            lines.append(f"- **Fix**: {b.get('suggestion')}")
+            lines.append("")
+
+    if notes:
+        lines.append("## Notes")
+        lines.append("")
+        for n in notes:
+            lines.append(f"- {n}")
+        lines.append("")
 
     return "\n".join(lines)

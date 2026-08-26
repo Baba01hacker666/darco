@@ -4,7 +4,7 @@ import os
 from click.testing import CliRunner
 
 from darco.cli import cli
-from darco.models import NameValue, Request, Response
+from darco.models import BodyType, NameValue, Request, Response
 from darco.xss import scan_xss
 
 
@@ -56,6 +56,66 @@ def test_xss_html_body_unencoded(monkeypatch):
     assert "<" in r.unencoded_chars
     assert ">" in r.unencoded_chars
     assert r.confidence == "confirmed"
+
+
+def test_xss_skips_framework_state_fields_by_default(monkeypatch):
+    req = Request(
+        method="POST",
+        url="http://app.test/login",
+        headers=[
+            NameValue(
+                name="Content-Type", value="application/x-www-form-urlencoded"
+            )
+        ],
+        body_type=BodyType.FORM,
+        body_form=[
+            NameValue(name="__VIEWSTATE", value="abc"),
+            NameValue(name="q", value="hello"),
+        ],
+    )
+
+    def mock_send(r, session):
+        val = next((p.value for p in r.body_form if p.name == "q"), "")
+        return Response(
+            status_code=200,
+            body=f"<html><body>Results for {val}</body></html>",
+            body_len=100,
+        )
+
+    monkeypatch.setattr("darco.xss._send", mock_send)
+    result = scan_xss(req)
+    assert "__VIEWSTATE" not in result.tested_params
+    assert "q" in result.tested_params
+    assert all(r.param == "q" for r in result.reflections)
+
+
+def test_xss_include_framework_state_fields(monkeypatch):
+    req = Request(
+        method="POST",
+        url="http://app.test/login",
+        headers=[
+            NameValue(
+                name="Content-Type", value="application/x-www-form-urlencoded"
+            )
+        ],
+        body_type=BodyType.FORM,
+        body_form=[
+            NameValue(name="__VIEWSTATE", value="abc"),
+            NameValue(name="q", value="hello"),
+        ],
+    )
+
+    def mock_send(r, session):
+        return Response(
+            status_code=200,
+            body="<html><body>ok</body></html>",
+            body_len=24,
+        )
+
+    monkeypatch.setattr("darco.xss._send", mock_send)
+    result = scan_xss(req, include_state_fields=True)
+    assert "__VIEWSTATE" in result.tested_params
+    assert "q" in result.tested_params
 
 
 def test_xss_html_attribute_unencoded_quotes(monkeypatch):

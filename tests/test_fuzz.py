@@ -186,3 +186,96 @@ def test_send_fuzz_flag_oneshot(app, tmp_path):
     d = json.loads(r.stdout)
     assert "fuzz" in d
     assert d["fuzz"]["total_variants"] >= 1
+
+
+# ------------------------------------------------------------------ framework state fields
+def test_build_variants_skips_framework_state_fields():
+    from darco.fuzz import build_variants
+    from darco.models import BodyType, NameValue, Request
+
+    req = Request(
+        method="POST",
+        url="http://app.test/login",
+        body_type=BodyType.FORM,
+        body_form=[
+            NameValue(name="__VIEWSTATE", value="1"),
+            NameValue(name="q", value="search"),
+        ],
+    )
+
+    variants = build_variants(req)
+    labels = [label for label, _, _ in variants]
+    assert not any("__VIEWSTATE" in label for label in labels)
+    assert any(label.startswith("flip:q") or "q" in label for label in labels)
+
+    variants_state = build_variants(req, include_state_fields=True)
+    labels_state = [label for label, _, _ in variants_state]
+    assert any("__VIEWSTATE" in label for label in labels_state)
+
+
+def test_fuzz_run_baseline_session_cookie_rotation_not_flagged(monkeypatch):
+    from darco.fuzz import run_fuzz
+    from darco.models import Cookie, NameValue, Request, Response, SessionState
+
+    req = Request(
+        method="GET",
+        url="http://t/u",
+        params=[NameValue(name="id", value="5")],
+    )
+
+    def fake_execute(r, session):
+        # Server issues the same session cookie name on every response.
+        return (
+            None,
+            Response(
+                status_code=200,
+                body="<html>ok</html>",
+                body_len=15,
+                set_cookies=[Cookie(name="ASPSESSIONIDTEST", value="abc")],
+            ),
+            None,
+        )
+
+    monkeypatch.setattr("darco.fuzz.execute", fake_execute)
+    result = run_fuzz(req, SessionState())
+    assert result["total_variants"] >= 1
+    assert not any(
+        a.get("anomaly") == "new_auth_cookie" for a in result["results"]
+    )
+
+
+def test_fuzz_classify_new_auth_token_cookie():
+    from darco.fuzz import _classify
+    from darco.models import Cookie, Response
+
+    base = Response(status_code=200, body="ok", body_len=2, url="http://t")
+    resp = Response(
+        status_code=200,
+        body="ok",
+        body_len=2,
+        url="http://t",
+        set_cookies=[Cookie(name="auth_token", value="x")],
+    )
+    c = _classify("flip:foo", base, resp, None)
+    assert c is not None
+    assert c["anomaly"] == "new_auth_cookie"
+
+
+def test_fuzz_classify_session_rotation_not_flagged():
+    from darco.fuzz import _classify
+    from darco.models import Cookie, Response
+
+    base = Response(status_code=200, body="ok", body_len=2, url="http://t")
+    resp = Response(
+        status_code=200,
+        body="ok",
+        body_len=2,
+        url="http://t",
+        set_cookies=[Cookie(name="ASPSESSIONIDTEST", value="x")],
+    )
+    assert _classify("flip:foo", base, resp, None) is None
+
+    # ...but a fresh session cookie after strip-session is still reported
+    c = _classify("strip-session", base, resp, None)
+    assert c is not None
+    assert c["anomaly"] == "new_auth_cookie"

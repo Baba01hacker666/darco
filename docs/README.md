@@ -17,6 +17,7 @@ you care about.
 | [proxy.md](proxy.md) | The record-only forward proxy: HTTP + CONNECT tunneling |
 | [discovery.md](discovery.md) | The async crawler: BFS, seeds, parsing, endpoint inventory |
 | [fuzz.md](fuzz.md) | Smart fuzz engine: build_variants, background dispatch, anomaly classification |
+| [login.md](login.md) | Login form finder + SQLi auth-bypass audit (`darco login`) |
 | [development.md](development.md) | Extending Darco: conventions, testing, adding features |
 
 ## Quick map
@@ -29,6 +30,8 @@ darco/
   engine.py       HTTP execution + session capture/replay
   mutate.py       request transforms (strip-session, flip-param, ...)
   fuzz.py         smart variant engine: build_variants, run_fuzz, _classify
+  login.py        login form finder + SQL auth-bypass audit
+  guidance.py     human-readable debrief notes for structured output
   diff.py         response diffing with volatile-token normalization
   analyze.py      signal heuristics -> Finding objects
   configfile.py   darco.toml / darco.json discovery + load

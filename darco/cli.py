@@ -43,11 +43,19 @@ def _echo_json(data) -> None:
 
 def _emit(ctx, data: dict, md_builder) -> None:
     """Print `data` as markdown (default), JSON, or table, per --format."""
+    from .guidance import build_notes, render_notes
+
+    notes = build_notes(data) if isinstance(data, dict) else None
+    if notes:
+        data = {**data, "debrief": notes}
     fmt = (ctx.obj or {}).get("format", DEFAULT_FMT)
     if fmt == "json":
         _echo_json(data)
     elif fmt == "md":
         click.echo(md_builder(data))
+        extra = render_notes(notes)
+        if extra:
+            click.echo(extra)
     else:  # table
         click.echo(_table_from_json(data))
 
@@ -728,6 +736,12 @@ def _resolve_base_request(
 @click.option(
     "--concurrency", type=int, default=None, help="Parallel variant dispatches"
 )
+@click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also fuzz framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
 @click.pass_context
 def fuzz_cmd(
     ctx,
@@ -741,6 +755,7 @@ def fuzz_cmd(
     cli_header,
     cli_form,
     concurrency,
+    include_state,
 ):
     """Smart-default fuzz: auto-mutate params (flip, type-confuse numerics, boundaries, SQL/XSS) and report anomalies."""
     from .fuzz import run_fuzz
@@ -774,7 +789,13 @@ def fuzz_cmd(
     except Exception as exc:  # noqa: BLE001
         baseline = None
         click.echo(f"warn: baseline request failed: {exc}", err=True)
-    result = run_fuzz(req, session, baseline_response=baseline, concurrency=conc)
+    result = run_fuzz(
+        req,
+        session,
+        baseline_response=baseline,
+        concurrency=conc,
+        include_state_fields=include_state,
+    )
     _emit(ctx, result, md_fuzz)
 
 
@@ -1206,10 +1227,16 @@ def info_cmd(
 @click.option("-p", "--param", default=None, help="Specific parameter name to test")
 @click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
+@click.option(
     "--insecure", is_flag=True, default=False, help="Disable TLS verification"
 )
 @click.pass_context
-def sql_cmd(ctx, target, url, from_id, param, save, insecure):
+def sql_cmd(ctx, target, url, from_id, param, save, include_state, insecure):
     """SQL injection testing: syntax break, quote balancing, arithmetic evaluation, and boolean differential."""
     from .models import Finding, Request
     from .render import md_sqli
@@ -1263,7 +1290,12 @@ def sql_cmd(ctx, target, url, from_id, param, save, insecure):
         )
         session = _one_shot_session()
 
-    result = scan_sqli(base_req, session=session, param_filter=param)
+    result = scan_sqli(
+        base_req,
+        session=session,
+        param_filter=param,
+        include_state_fields=include_state,
+    )
 
     if save:
         ws = ws or _find_workspace(ctx, auto_create_target=base_req.url)
@@ -1295,9 +1327,15 @@ def sql_cmd(ctx, target, url, from_id, param, save, insecure):
 @click.option("--from", "from_id", default=None, help="Stored record ID to test")
 @click.option("-p", "--param", default=None, help="Specific parameter name to test")
 @click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
+@click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
 @click.option("--insecure", is_flag=True, default=False)
 @click.pass_context
-def sqli_cmd(ctx, target, url, from_id, param, save, insecure):
+def sqli_cmd(ctx, target, url, from_id, param, save, include_state, insecure):
     """Alias for SQL injection testing."""
     ctx.invoke(
         sql_cmd,
@@ -1306,6 +1344,7 @@ def sqli_cmd(ctx, target, url, from_id, param, save, insecure):
         from_id=from_id,
         param=param,
         save=save,
+        include_state=include_state,
         insecure=insecure,
     )
 
@@ -1337,10 +1376,18 @@ def sqli_cmd(ctx, target, url, from_id, param, save, insecure):
 )
 @click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
+@click.option(
     "--insecure", is_flag=True, default=False, help="Disable TLS verification"
 )
 @click.pass_context
-def xss_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecure):
+def xss_cmd(
+    ctx, target, url, from_id, param, headers, cookies, save, include_state, insecure
+):
     """XSS & reflection audit: probes inputs, classifies reflection contexts, and audits HTML encoding."""
     from .models import Cookie, Finding, NameValue, Request
     from .render import md_xss
@@ -1407,7 +1454,12 @@ def xss_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecure):
                 k, v = c.split("=", 1)
                 session.cookies.append(Cookie(name=k.strip(), value=v.strip()))
 
-    result = scan_xss(base_req, session=session, param_filter=param)
+    result = scan_xss(
+        base_req,
+        session=session,
+        param_filter=param,
+        include_state_fields=include_state,
+    )
 
     if save:
         ws = ws or _find_workspace(ctx, auto_create_target=base_req.url)
@@ -1442,9 +1494,17 @@ def xss_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecure):
 @click.option("-H", "--header", "headers", multiple=True)
 @click.option("-C", "--cookie", "cookies", multiple=True)
 @click.option("--save", is_flag=True)
+@click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
 @click.option("--insecure", is_flag=True, default=False)
 @click.pass_context
-def reflect_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecure):
+def reflect_cmd(
+    ctx, target, url, from_id, param, headers, cookies, save, include_state, insecure
+):
     """Alias for XSS & reflection audit."""
     ctx.invoke(
         xss_cmd,
@@ -1455,7 +1515,150 @@ def reflect_cmd(ctx, target, url, from_id, param, headers, cookies, save, insecu
         headers=headers,
         cookies=cookies,
         save=save,
+        include_state=include_state,
         insecure=insecure,
+    )
+
+
+# ------------------------------------------------------------------ login finder & SQLi bypass audit
+@cli.command("login")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target login page or site root")
+@click.option(
+    "--find-only",
+    is_flag=True,
+    help="Only find login forms — skip the SQLi bypass audit",
+)
+@click.option("--username", "user_field", default=None, help="Force username field name")
+@click.option("--password", "pass_field", default=None, help="Force password field name")
+@click.option(
+    "--payload",
+    "extra_payloads",
+    multiple=True,
+    help="Extra login-bypass payload to try (repeatable)",
+)
+@click.option(
+    "--test-password",
+    is_flag=True,
+    help="Also probe the password field with bypass payloads",
+)
+@click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
+@click.option(
+    "--insecure", is_flag=True, default=False, help="Disable TLS verification"
+)
+@click.option("--timeout", type=float, default=10.0)
+@click.pass_context
+def login_cmd(
+    ctx,
+    target,
+    url,
+    find_only,
+    user_field,
+    pass_field,
+    extra_payloads,
+    test_password,
+    save,
+    insecure,
+    timeout,
+):
+    """Find login forms and test them for SQL authentication-bypass."""
+    from .login import LOGIN_BYPASS_PAYLOADS, audit_login_forms, find_login_forms
+    from .models import Finding
+    from .render import md_login
+
+    target_val = url or target
+    if not target_val:
+        cfg = (ctx.obj or {}).get("config")
+        if cfg and cfg.target:
+            target_val = cfg.target
+        else:
+            ws = _find_workspace(ctx, require=False)
+            if ws:
+                try:
+                    target_val = ws.load_config().target
+                except DarcoError:
+                    pass
+    if not target_val:
+        raise DarcoError(
+            "provide a target URL: 'darco login <url>' or 'darco login -u <url>'"
+        )
+    if not target_val.startswith(("http://", "https://")):
+        target_val = "http://" + target_val
+
+    forms = find_login_forms(
+        target_val,
+        timeout=timeout,
+        verify=not insecure,
+    )
+    payloads = tuple(extra_payloads) or LOGIN_BYPASS_PAYLOADS
+    result = audit_login_forms(
+        forms,
+        target=target_val,
+        payloads=payloads,
+        timeout=timeout,
+        verify=not insecure,
+        test_password_field=test_password,
+        username_override=user_field,
+        password_override=pass_field,
+    )
+
+    if save and result.bypasses:
+        ws = _find_workspace(ctx, auto_create_target=target_val)
+        findings = []
+        for b in result.bypasses:
+            findings.append(
+                Finding(
+                    id=f"login-bypass-{b.param}-{b.payload[:16]}",
+                    type="login_sqli_bypass",
+                    severity="high" if b.confidence in ("confirmed", "high") else "medium",
+                    location=f"{result.target} ({b.param})",
+                    evidence=b.evidence,
+                    suggestion=b.suggestion,
+                )
+            )
+        ws.add_findings(findings)
+
+    _emit(ctx, to_json(result), md_login)
+
+
+@cli.command("auth")
+@click.argument("target", required=False, default=None)
+@click.option("-u", "--url", default=None, help="Target login page or site root")
+@click.option("--find-only", is_flag=True)
+@click.option("--username", "user_field", default=None)
+@click.option("--password", "pass_field", default=None)
+@click.option("--payload", "extra_payloads", multiple=True)
+@click.option("--test-password", is_flag=True)
+@click.option("--save", is_flag=True)
+@click.option("--insecure", is_flag=True, default=False)
+@click.option("--timeout", type=float, default=10.0)
+@click.pass_context
+def auth_cmd(
+    ctx,
+    target,
+    url,
+    find_only,
+    user_field,
+    pass_field,
+    extra_payloads,
+    test_password,
+    save,
+    insecure,
+    timeout,
+):
+    """Alias for the login form finder + SQLi bypass audit."""
+    ctx.invoke(
+        login_cmd,
+        target=target,
+        url=url,
+        find_only=find_only,
+        user_field=user_field,
+        pass_field=pass_field,
+        extra_payloads=extra_payloads,
+        test_password=test_password,
+        save=save,
+        insecure=insecure,
+        timeout=timeout,
     )
 
 
@@ -1775,6 +1978,12 @@ def proxy_cmd(ctx, port, listen, record_only):
     is_flag=True,
     help="Auto-audit discovered file upload forms/endpoints (SVG/HTML XSS)",
 )
+@click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -1791,6 +2000,7 @@ def discover_cmd(
     sqli,
     xss,
     upload,
+    include_state,
     insecure,
     timeout,
 ):
@@ -1826,6 +2036,7 @@ def discover_cmd(
                 sqli=sqli,
                 xss=xss,
                 upload=upload,
+                include_state_fields=include_state,
                 timeout=timeout,
                 verify=not (cfg.insecure or insecure),
             )
@@ -1878,6 +2089,12 @@ def discover_cmd(
     is_flag=True,
     help="Auto-audit discovered file upload forms/endpoints",
 )
+@click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -1894,6 +2111,7 @@ def crawl_cmd(
     sqli,
     xss,
     upload,
+    include_state,
     insecure,
     timeout,
 ):
@@ -1911,6 +2129,7 @@ def crawl_cmd(
         sqli=sqli,
         xss=xss,
         upload=upload,
+        include_state=include_state,
         insecure=insecure,
         timeout=timeout,
     )
@@ -1927,6 +2146,12 @@ def crawl_cmd(
 @click.option("--no-xss", is_flag=True, help="Disable XSS reflection testing")
 @click.option("--no-upload", is_flag=True, help="Disable file upload security auditing")
 @click.option("--no-js", is_flag=True)
+@click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -1942,6 +2167,7 @@ def scan_cmd(
     no_xss,
     no_upload,
     no_js,
+    include_state,
     insecure,
     timeout,
 ):
@@ -1959,6 +2185,7 @@ def scan_cmd(
         sqli=not no_sqli,
         xss=not no_xss,
         upload=not no_upload,
+        include_state=include_state,
         insecure=insecure,
         timeout=timeout,
     )
@@ -1975,6 +2202,12 @@ def scan_cmd(
 @click.option("--no-xss", is_flag=True)
 @click.option("--no-upload", is_flag=True)
 @click.option("--no-js", is_flag=True)
+@click.option(
+    "--include-state",
+    is_flag=True,
+    default=False,
+    help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
+)
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -1990,6 +2223,7 @@ def auto_cmd(
     no_xss,
     no_upload,
     no_js,
+    include_state,
     insecure,
     timeout,
 ):
@@ -2006,6 +2240,7 @@ def auto_cmd(
         no_xss=no_xss,
         no_upload=no_upload,
         no_js=no_js,
+        include_state=include_state,
         insecure=insecure,
         timeout=timeout,
     )

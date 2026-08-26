@@ -11,6 +11,7 @@ from .models import (
     XssReflection,
     XssScanResult,
 )
+from .state_fields import is_state_field
 
 
 def _send(req: Request, session: SessionState) -> Response | None:
@@ -93,6 +94,7 @@ def scan_xss(
     request: Request,
     session: SessionState | None = None,
     param_filter: str | None = None,
+    include_state_fields: bool = False,
 ) -> XssScanResult:
     """Audit a request for parameter reflection and XSS character encoding."""
     if session is None:
@@ -104,16 +106,22 @@ def scan_xss(
     ] = []  # (param_type, param_name, original_val)
 
     for p in request.params:
-        if param_filter is None or p.name == param_filter:
+        if (param_filter is None or p.name == param_filter) and (
+            include_state_fields or not is_state_field(p.name)
+        ):
             params_to_test.append(("query", p.name, p.value or ""))
 
     for p in request.body_form:
-        if param_filter is None or p.name == param_filter:
+        if (param_filter is None or p.name == param_filter) and (
+            include_state_fields or not is_state_field(p.name)
+        ):
             params_to_test.append(("form", p.name, p.value or ""))
 
     if isinstance(request.body_json, dict):
         for k, v in request.body_json.items():
-            if param_filter is None or k == param_filter:
+            if (param_filter is None or k == param_filter) and (
+                include_state_fields or not is_state_field(k)
+            ):
                 params_to_test.append(("json", k, str(v) if v is not None else ""))
 
     result = XssScanResult(

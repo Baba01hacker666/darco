@@ -16,10 +16,16 @@ For every query param / form field it inspects the value and emits variants:
 | value is boolean-ish (`true/false/1/0/yes/no/on/off`) | `flip:<name>` | `enabled=true` → `enabled=false` |
 | value looks numeric (`id=5`, `page=2`) | `type-confuse:<name>=<word>` | `id=5` → `id=abc`, `id=root`, `id=null` |
 | value looks numeric / name is `id/user_id/uid/page/...` | `boundary:<name>=<b>` | `id=5` → `id=0`, `id=-1`, `id=9999999999`, `id=NaN` |
-| name is search-like (`q/search/name/username/...`) | `sql:<name>` / `xss:<name>` | injects `' OR '1'='1`, `<script>alert(1)</script>`, `${jndi:...}` |
+| name is search/filter-like (`q/search/name/username/category/type/filter/tag/sort/status/group/...`) | `sql:<name>` / `xss:<name>` | injects `' OR '1'='1`, `<script>alert(1)</script>`, `${jndi:...}` |
 | always | `strip-session` | removes cookies + auth headers (broken-auth probe) |
 
 Duplicates are de-duplicated by label.
+
+Opaque framework state fields (`__VIEWSTATE`, `__EVENTVALIDATION`, CSRF
+tokens, …) are skipped by default — tampering with them only produces
+framework MAC/validation errors. Pass `include_state_fields=True`
+(CLI: `--include-state` on `fuzz`/`sql`/`xss`/`scan`/`discover`) to audit
+them explicitly.
 
 ## Execution (`run_fuzz`)
 
@@ -32,11 +38,15 @@ Duplicates are de-duplicated by label.
 | --- | --- |
 | `status_change` | variant status differs from baseline (200→500, 403→200, …) |
 | `error_leak` | stack trace / SQL / Java exception pattern in body |
-| `new_auth_cookie` | a new `session`/`token`/`auth` cookie appeared vs baseline |
+| `new_auth_cookie` | a new auth token/credential cookie appeared vs baseline (or a fresh session cookie after `strip-session`; routine session-ID rotation is ignored) |
 | `body_changed` | response body similarity < 0.85 (something echoed differently) |
 | `request_error` | the variant itself failed to send |
 
 Only anomalies are returned — boring "same as baseline" variants are dropped.
+
+If no baseline is supplied, `run_fuzz` fetches one itself before dispatching
+variants, so a server that hands out a fresh session cookie to every anonymous
+request doesn't make every variant look like an auth anomaly.
 
 ## Config
 

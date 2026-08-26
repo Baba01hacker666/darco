@@ -23,6 +23,7 @@ from . import mutate as _mutate
 from .engine import execute
 from .models import NameValue, Request, Response, SessionState
 from .mutate import Mutation
+from .state_fields import is_state_field
 
 BOOLEAN_VALUES = {"true", "false", "1", "0", "yes", "no", "on", "off"}
 SQL_PROBES = ["' OR '1'='1", "1' OR '1'='1' --", "admin'--", "1; DROP TABLE users--"]
@@ -57,7 +58,13 @@ ERROR_PATTERNS = [
     r"Stack trace",
     r"Exception in thread",
 ]
-AUTH_COOKIE = re.compile(r"session|token|jwt|auth|sid|remember", re.IGNORECASE)
+# Strong auth indicators: a brand-new token/credential cookie is always
+# interesting, unlike session-ID cookies which rotate on every anonymous
+# request on classic ASP / PHP targets.
+AUTH_COOKIE = re.compile(r"token|jwt|auth|remember|apikey|api_key", re.IGNORECASE)
+SESSION_COOKIE = re.compile(
+    r"session|jsessionid|phpsessid|aspsession|cfid|cftoken", re.IGNORECASE
+)
 _AUTH_HEADERS = {
     "authorization",
     "cookie",
@@ -78,10 +85,16 @@ def _is_probably_numeric(v: str) -> bool:
         return False
 
 
-def build_variants(req: Request) -> list[tuple[str, Request, list[str]]]:
+def build_variants(
+    req: Request, include_state_fields: bool = False
+) -> list[tuple[str, Request, list[str]]]:
     """Return [(label, mutated_request, descriptions), ...] for smart defaults."""
     variants: list[tuple[str, Request, list[str]]] = []
-    all_params: list[NameValue] = list(req.params) + list(req.body_form)
+    all_params: list[NameValue] = [
+        p
+        for p in list(req.params) + list(req.body_form)
+        if include_state_fields or not is_state_field(p.name)
+    ]
     seen_labels = set()
 
     def add(label: str, ops: list[Mutation]):
@@ -121,7 +134,21 @@ def build_variants(req: Request) -> list[tuple[str, Request, list[str]]]:
                 )
 
     for p in all_params:
-        if p.name.lower() in {"q", "search", "name", "username", "input", "term"}:
+        if p.name.lower() in {
+            "q",
+            "search",
+            "name",
+            "username",
+            "input",
+            "term",
+            "category",
+            "type",
+            "filter",
+            "tag",
+            "sort",
+            "status",
+            "group",
+        }:
             for sq in SQL_PROBES:
                 add(f"sql:{p.name}", [Mutation("set_param", name=p.name, value=sq)])
             for x in XSS_PROBES:
@@ -154,13 +181,21 @@ def _classify(
             out["detail"] = f"error pattern matched: {pat[:40]}"
             return out
 
-    # new auth cookie
+    # new auth token / credential cookie
     base_cookies = {c.name for c in (baseline.set_cookies if baseline else [])}
     for c in resp.set_cookies:
         if AUTH_COOKIE.search(c.name) and c.name not in base_cookies:
             out.setdefault("anomaly", "new_auth_cookie")
             out["detail"] = f"new cookie {c.name}="
             return out
+
+    # session-ID rotation is expected unless the session itself was stripped
+    if label == "strip-session":
+        for c in resp.set_cookies:
+            if SESSION_COOKIE.search(c.name) and c.name not in base_cookies:
+                out.setdefault("anomaly", "new_auth_cookie")
+                out["detail"] = f"new session cookie {c.name}="
+                return out
 
     # body delta vs baseline
     if baseline is not None and baseline.body:
@@ -182,10 +217,20 @@ def run_fuzz(
     baseline_response: Response | None = None,
     concurrency: int = 6,
     variants: list[tuple[str, Request, list[str]]] | None = None,
+    include_state_fields: bool = False,
 ) -> dict:
     """Dispatch variants in the background and return anomalies + summary."""
     if variants is None:
-        variants = build_variants(req)
+        variants = build_variants(req, include_state_fields=include_state_fields)
+
+    if baseline_response is None:
+        # Establish a clean-request baseline so routine session-cookie
+        # rotation (e.g. classic ASP issuing a fresh ASPSESSIONID to every
+        # anonymous request) isn't misreported as an auth anomaly.
+        try:
+            _, baseline_response, _ = execute(req, session.model_copy(deep=True))
+        except Exception:  # noqa: BLE001
+            baseline_response = None
 
     def _do(item):
         label, mreq, desc = item
