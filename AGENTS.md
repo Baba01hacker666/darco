@@ -28,7 +28,7 @@ approval gates unless explicitly asked.
 - Integration tests (`test_engine.py`, `test_proxy.py`, `test_discovery.py`,
   `test_cli.py`) bind localhost sockets; sandboxed environments may need
   network/bind approval.
-- Dependencies: `httpx`, `pydantic>=2`, `click`, `beautifulsoup4` (declared in
+- Dependencies: `httpx`, `pydantic>=2`, `click`, `beautifulsoup4`, `pyyaml` (declared in
   `pyproject.toml`). No formatter/linter is configured — keep style consistent
   with existing modules.
 
@@ -36,7 +36,7 @@ approval gates unless explicitly asked.
 
 - `darco/models.py` — all Pydantic v2 data models (`Request`, `Response`,
   `HistoryRecord`, `WorkspaceConfig`, `SessionState`, `Finding`, `SiteMap`,
-  `Endpoint`, `Form`). Serialize with `to_json(model)` / `model_dump(mode="json")`.
+  `Endpoint`, `Form`, `AdminPanel`, `AttackTemplate`). Serialize with `to_json(model)` / `model_dump(mode="json")`.
 - `darco/workspace.py` — `Workspace` class: config, session, history
   (`history.jsonl` with zero-padded ids `0001`...), bodies, findings, sitemap.
   `next_id()` reserves an id; `add_history()` syncs the counter.
@@ -51,9 +51,16 @@ approval gates unless explicitly asked.
   copy with lineage (`parent_id`, `mutations` list).
 - `darco/diff.py`, `darco/analyze.py` — response diffing (volatile-token
   normalization) and signal heuristics (findings).
+- `darco/login.py` — login form discovery, SQLi auth-bypass tests, smart
+  domain-derived and discovered-email credential generator.
+- `darco/admin.py` — administrative portal & dashboard discovery, auth
+  classification (`login_form`, `exposed_dashboard`, `basic_auth`), and credential audit.
+- `darco/templates/` — Nuclei-compatible attack template engine: YAML/JSON loader,
+  async multi-target execution engine, matchers (`status`, `word`, `regex`),
+  extractors (`regex`, `kval`, `json`), and template scaffolder.
 - `darco/proxy.py` — record-only asyncio forward proxy; HTTPS is tunneled
   (CONNECT), not decrypted.
-- `darco/discovery/` — async crawler: same-origin BFS, form/JS extraction,
+- `darco/discovery/` — async crawler: same-origin BFS, form/JS/email extraction,
   `robots.txt`/`sitemap.xml` seeding, endpoint inventory + signals.
 - `darco/cli.py` — click CLI wiring; every command emits JSON to stdout and logs
   to stderr. Expected failures raise `DarcoError` (from `darco/errors.py`).

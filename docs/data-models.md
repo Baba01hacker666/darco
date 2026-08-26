@@ -135,9 +135,22 @@ command for manual verification).
 `suggestion`), `notes`.
 
 ### `AutoScanReport` (`darco scan` / `discover --sqli --xss ...`)
-`target`, `crawled_endpoints`, `crawled_forms`, `fuzzed_requests`,
+`target`, `crawled_endpoints`, `crawled_forms`, `emails` (`list[str]`),
+`admin_panels` (`list[AdminPanel]`), `fuzzed_requests`,
 `anomalies` (`list[dict]`), `sqli_vulnerabilities`, `xss_reflections`,
 `upload_findings`, `login_bypasses`, `technologies`, `wafs`, `findings`.
+
+### `AdminPanelReport` (`darco admin`)
+`target`, `scanned_paths`, `panels_found` — `list[AdminPanel]` (`path`, `url`,
+`status_code`, `title`, `auth_type` (`exposed_dashboard`/`login_form`/`basic_auth`/`portal_redirect`/`forbidden`),
+`redirect_url`, `login_form`), `tested_creds`, `bypasses` (`list[LoginBypassFinding]`),
+`emails_used` (`list[str]`), `findings` (`list[Finding]`).
+
+### `TemplateScanReport` (`darco template run`)
+`target`, `templates_loaded`, `templates_executed`, `requests_sent`,
+`matched_results` — `list[TemplateMatchResult]` (`template_id`, `template_name`,
+`severity`, `matched_url`, `matcher_type`, `matched_words`, `extracted_data`,
+`curl`, `evidence`, `remediation`), `findings` (`list[Finding]`).
 
 ## Debrief notes
 

@@ -18,6 +18,8 @@ you care about.
 | [discovery.md](discovery.md) | The async crawler: BFS, seeds, parsing, endpoint inventory |
 | [fuzz.md](fuzz.md) | Smart fuzz engine: build_variants, background dispatch, anomaly classification |
 | [login.md](login.md) | Login form finder + SQLi auth-bypass audit (`darco login`) |
+| [admin.md](admin.md) | Admin panel finder, auth classification, and smart email credentials (`darco admin`) |
+| [templates.md](templates.md) | Nuclei-compatible attack template engine: YAML/JSON syntax, matchers, extractors (`darco template`) |
 | [plugins.md](plugins.md) | Scan plugin system: hooks, registry, `xml_inject` WAF-bypass example |
 | [development.md](development.md) | Extending Darco: conventions, testing, adding features |
 
@@ -31,7 +33,9 @@ darco/
   engine.py       HTTP execution + session capture/replay
   mutate.py       request transforms (strip-session, flip-param, ...)
   fuzz.py         smart variant engine: build_variants, run_fuzz, _classify
-  login.py        login form finder + SQL auth-bypass audit
+  login.py        login form finder + SQL auth-bypass + smart credential generator
+  admin.py        admin panel & console discovery + authentication classification
+  templates/      Nuclei-compatible attack template engine, matchers, and built-in catalog
   plugins/        scan plugin registry + built-ins (xml_inject)
   xmlinject.py    XML body parsing/entity-encoding primitives
   guidance.py     human-readable debrief notes for structured output
@@ -40,7 +44,7 @@ darco/
   configfile.py   darco.toml / darco.json discovery + load
   proxy.py        record-only asyncio forward proxy
   ingest/         curl / raw HTTP / HAR parsers -> Request
-  discovery/      async crawler -> SiteMap
+  discovery/      async crawler -> SiteMap (endpoints, forms, JS, emails)
 tests/            fixture app + unit/integration tests
 ```
 
