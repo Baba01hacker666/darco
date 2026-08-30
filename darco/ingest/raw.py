@@ -40,9 +40,10 @@ def parse_raw_http(
         if host is None:
             raise DarcoError("raw request has no Host header and no absolute URL")
         scheme = scheme or (
-            "https" if ":443" in host or host.endswith(":443") else "http"
+             "https" if ":443" in host or host.endswith(":443") else "http"
         )
-        url = f"{scheme}://{host}{target}"
+        clean_target = target if target.startswith("/") or target == "*" else "/" + target
+        url = f"{scheme}://{host}{clean_target}"
 
     cookies: list[Cookie] = []
     cookie_headers = [h.value for h in headers if h.name.lower() == "cookie"]

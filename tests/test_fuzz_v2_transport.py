@@ -119,6 +119,7 @@ def test_v2_classify_semantic_multi_signal():
     assert "sql_error" in c["anomalies"]
     assert "status_change" in c["anomalies"]
     assert c["severity"] >= 5
+    assert c["anomaly"] in ("error_leak", "sql_error")
 
 
 def test_v2_classify_reflected_payload():

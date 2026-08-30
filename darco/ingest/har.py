@@ -10,8 +10,13 @@ from ..models import BodyType, Cookie, NameValue, Request
 
 def parse_har(text_or_path: str | Path, *, source: str = "har") -> list[Request]:
     """Parse a HAR file into a list of Requests (one per entry)."""
-    p = Path(text_or_path)
-    if p.exists():
+    try:
+        p = Path(text_or_path)
+        is_file = p.exists()
+    except (OSError, ValueError):
+        is_file = False
+
+    if is_file:
         try:
             data = json.loads(p.read_text())
         except Exception as exc:

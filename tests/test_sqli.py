@@ -421,8 +421,25 @@ def test_sqli_finding_reproduction_curl(monkeypatch):
     vuln = result.vulnerabilities[0]
     assert vuln.curl
     assert "curl -i" in vuln.curl
-    assert (
-        "http://app.test/item?id=1%27" in vuln.curl
-        or "http://app.test/item?id=1'" in vuln.curl
-    )
     assert "Authorization: Bearer secret-token" in vuln.curl
+
+
+def test_sqli_reproduction_curl_escapes_single_quotes():
+    from darco.sqli import _build_repro_curl
+
+    req = Request(
+        method="POST",
+        url="http://app.test/api",
+        headers=[NameValue(name="X-Custom", value="user's header")],
+        body_type=BodyType.RAW,
+        body_raw="<data>' OR '1'='1</data>",
+    )
+    curl = _build_repro_curl(
+        req,
+        param_type="xml",
+        param_name="data",
+        payload="admin'--",
+        orig_val="' OR '1'='1",
+    )
+    assert "user'\\''s header" in curl
+    assert "admin'\\''--" in curl

@@ -22,7 +22,7 @@ def _curl_for(target: str, param: str, param_type: str, payload: str) -> str:
 
 def _worst_conf(vulns: list[dict]) -> str:
     confs = [str(v.get("confidence") or "potential").lower() for v in vulns]
-    return min(confs, key=lambda c: _CONF_ORDER.get(c, 9))
+    return min(confs, default="potential", key=lambda c: _CONF_ORDER.get(c, 9))
 
 
 # ------------------------------------------------------------------ SQLi
@@ -212,8 +212,8 @@ def scan_notes(data: dict) -> dict:
     up = data.get("upload_findings") or []
     login = data.get("login_bypasses") or []
     findings = data.get("findings") or []
-    eps = data.get("crawled_endpoints")
-    forms = data.get("crawled_forms")
+    eps = data.get("crawled_endpoints") or 0
+    forms = data.get("crawled_forms") or 0
 
     high_med = [f for f in findings if f.get("severity") in ("high", "medium")]
     verdict = (

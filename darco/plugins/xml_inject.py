@@ -119,9 +119,10 @@ class XmlInjectionPlugin(ScanPlugin):
         body = xmlinject.replace_element_text(
             request.body_raw, param, value, xmlinject.xml_entity_encode(value)
         )
+        body_esc = body.replace("'", "'\\''")
         return (
             f"curl -i -X POST '{request.url}' -H 'Content-Type: application/xml' "
-            f"--data-binary '{body}'"
+            f"--data-binary '{body_esc}'"
         )
 
     # ------------------------------------------------ entity-encoded SQLi test

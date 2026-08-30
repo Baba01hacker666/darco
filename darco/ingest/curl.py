@@ -75,7 +75,6 @@ def _parse_cookies(raw: str) -> list[Cookie]:
             "max-age",
             "secure",
             "httponly",
-            "samesize",
             "samesite",
             "version",
         }:
@@ -92,7 +91,7 @@ def _encode_data_urlencode(arg: str) -> str:
     if arg.startswith("="):
         return _urlencode_value(arg[1:])
     name, sep, value = arg.partition("=")
-    if sep and value:
+    if sep:
         return f"{name}={_urlencode_value(value)}"
     return f"{name}={_urlencode_value(name)}"
 

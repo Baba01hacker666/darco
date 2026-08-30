@@ -15,6 +15,8 @@ _TOKEN_RE = re.compile(r"(?i)\b(token|csrf|xsrf|nonce)([=:]\s*)?[A-Za-z0-9._\-]{
 
 def normalize_body(text: str) -> str:
     """Normalize volatile tokens (timestamps, long hex, csrf-ish values) for diffing."""
+    if not text:
+        return ""
     text = _TS_RE.sub("<ts>", text)
     text = _HEX_RE.sub("<hex>", text)
     text = _TOKEN_RE.sub(lambda m: m.group(1) + (m.group(2) or "=") + "<tok>", text)
@@ -34,8 +36,15 @@ def _json_path_diff(a, b, prefix=""):
     elif isinstance(a, list) and isinstance(b, list):
         if len(a) != len(b):
             changes.append(f"{prefix}[len {len(a)} -> {len(b)}]")
-        for i, (x, y) in enumerate(zip(a, b)):
-            changes.extend(_json_path_diff(x, y, f"{prefix}[{i}]."))
+        min_len = min(len(a), len(b))
+        for i in range(min_len):
+            changes.extend(_json_path_diff(a[i], b[i], f"{prefix}[{i}]."))
+        if len(a) > min_len:
+            for i in range(min_len, len(a)):
+                changes.append(f"{prefix}[{i}]: removed {a[i]!r}")
+        elif len(b) > min_len:
+            for i in range(min_len, len(b)):
+                changes.append(f"{prefix}[{i}]: added {b[i]!r}")
     elif a != b:
         changes.append(f"{prefix}changed {a!r} -> {b!r}")
     return changes

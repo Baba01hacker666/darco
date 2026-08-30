@@ -147,21 +147,24 @@ def _build_repro_curl(
         parts.append(f"-X {mutated.method}")
 
     final_url = rebuild_url(mutated.url, mutated.params)
-    parts.append(f"'{final_url}'")
+    def _sh_esc(s: str) -> str:
+        return s.replace("'", "'\\''")
+
+    parts.append(f"'{_sh_esc(final_url)}'")
 
     for h in mutated.headers:
         if h.name.lower() not in {"content-length", "host"}:
-            parts.append(f"-H '{h.name}: {h.value}'")
+            parts.append(f"-H '{_sh_esc(h.name)}: {_sh_esc(h.value)}'")
 
     if mutated.body_type == BodyType.FORM:
         encoded_body = urlencode([(p.name, p.value) for p in mutated.body_form])
-        parts.append(f"-d '{encoded_body}'")
+        parts.append(f"-d '{_sh_esc(encoded_body)}'")
     elif mutated.body_type == BodyType.JSON and mutated.body_json is not None:
         import json as _json
 
-        parts.append(f"-d '{_json.dumps(mutated.body_json)}'")
+        parts.append(f"-d '{_sh_esc(_json.dumps(mutated.body_json))}'")
     elif mutated.body_type == BodyType.RAW and mutated.body_raw:
-        parts.append(f"--data-binary '{mutated.body_raw}'")
+        parts.append(f"--data-binary '{_sh_esc(mutated.body_raw)}'")
 
     return " ".join(parts)
 

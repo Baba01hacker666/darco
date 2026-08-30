@@ -328,6 +328,9 @@ def test_dsl_evaluator_basics():
     assert evaluate_dsl("regex(body, 'Admin\\s+World')", vars)
     assert evaluate_dsl("to_lower(header) == 'server: nginx'", vars)
     assert not evaluate_dsl("missing_var == 1", vars)
+    # escaped quotes in string literals
+    assert evaluate_dsl("contains(body, 'Admin\\\'s') == false", vars)
+    assert evaluate_dsl("contains('hello \"world\"', '\"world\"')", vars)
     # unparseable -> False, never raises
     assert not evaluate_dsl("status_code ===", vars)
 

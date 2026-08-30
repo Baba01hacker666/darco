@@ -100,6 +100,7 @@ def probe_http2(url: str, timeout: float = 8) -> dict:
         try:
             ss = ctx.wrap_socket(s, server_hostname=host)
         except ssl.SSLError as exc:
+            s.close()
             return {
                 "target": url,
                 "http2": False,

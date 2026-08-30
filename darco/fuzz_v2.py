@@ -530,9 +530,9 @@ def _classify(
     if not out["anomalies"]:
         return None
 
-    # severity = max weight across detected anomalies
-    out["anomaly"] = out["anomalies"][0]
-    out["severity"] = max(_ANOMALY_WEIGHT.get(a, 1) for a in out["anomalies"])
+    # severity = max weight across detected anomalies; primary anomaly = highest severity
+    out["anomaly"] = max(out["anomalies"], key=lambda a: _ANOMALY_WEIGHT.get(a, 1))
+    out["severity"] = _ANOMALY_WEIGHT.get(out["anomaly"], 1)
     out["anomalies"] = sorted(set(out["anomalies"]))
     return out
 

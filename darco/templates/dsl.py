@@ -25,7 +25,7 @@ from typing import Any
 _TOKEN_RE = re.compile(
     r"""
     (?P<ws>\s+)
-  | (?P<string>'[^']*'|"[^"]*")
+  | (?P<string>'([^'\\]|\\.)*'|"([^"\\]|\\.)*")
   | (?P<number>-?\d+(?:\.\d+)?)
   | (?P<op>==|!=|>=|<=|&&|\|\||[><!(),])
   | (?P<ident>[A-Za-z_][A-Za-z0-9_.]*)
@@ -128,7 +128,11 @@ class _Parser:
                 raise DslError("expected ')'")
             return inner
         if kind == "string":
-            return val[1:-1]
+            raw = val[1:-1]
+            quote_char = val[0]
+            if quote_char == "'":
+                return raw.replace("\\'", "'").replace("\\\\", "\\")
+            return raw.replace('\\"', '"').replace("\\\\", "\\")
         if kind == "number":
             return float(val) if "." in val else int(val)
         if kind == "ident":

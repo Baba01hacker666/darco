@@ -290,3 +290,36 @@ def test_curl_autodetect_json_and_xml():
     assert any(
         h.name.lower() == "content-type" and "xml" in h.value for h in req_xml.headers
     )
+
+
+def test_curl_data_urlencode_empty_value():
+    req = parse_curl("curl -X POST http://h/form --data-urlencode 'empty=' --data-urlencode 'full=1'")
+    pairs = {(p.name, p.value) for p in req.body_form}
+    assert ("empty", "") in pairs
+    assert ("full", "1") in pairs
+
+
+def test_parse_har_long_payload_string():
+    long_comment = "a" * 8000
+    har = {
+        "log": {
+            "entries": [
+                {
+                    "request": {
+                        "method": "GET",
+                        "url": "http://example.com/api",
+                        "comment": long_comment,
+                    }
+                }
+            ]
+        }
+    }
+    reqs = parse_har(json.dumps(har))
+    assert len(reqs) == 1
+    assert reqs[0].url == "http://example.com/api"
+
+
+def test_parse_raw_http_relative_target_without_slash():
+    raw = "GET status HTTP/1.1\nHost: example.com\n\n"
+    req = parse_raw_http(raw)
+    assert req.url == "http://example.com/status"

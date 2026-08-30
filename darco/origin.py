@@ -198,6 +198,8 @@ def _root_domain(host: str) -> str:
     host = host.strip().lower()
     if host.startswith(("http://", "https://")):
         host = urlparse(host).hostname or host
+    else:
+        host = host.split("/")[0].split(":")[0]
     return host
 
 

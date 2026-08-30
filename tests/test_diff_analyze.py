@@ -132,3 +132,24 @@ def test_analyze_response_auth_cookie():
         set_cookies=[],
     )
     assert any(f.type == "auth_token_cookie" for f in analyze_response(req, resp))
+
+
+def test_diff_json_list_unequal_length():
+    a = _resp(200, json.dumps({"items": [1, 2]}))
+    b = _resp(200, json.dumps({"items": [1, 2, 3, 4]}))
+    d = diff_responses(a, b)
+    changes = d["body"]["json_changes"]
+    assert any("[2]: added 3" in c for c in changes)
+    assert any("[3]: added 4" in c for c in changes)
+
+    c = _resp(200, json.dumps({"items": [1]}))
+    d2 = diff_responses(b, c)
+    changes2 = d2["body"]["json_changes"]
+    assert any("[1]: removed 2" in c for c in changes2)
+    assert any("[2]: removed 3" in c for c in changes2)
+    assert any("[3]: removed 4" in c for c in changes2)
+
+
+def test_normalize_body_empty_or_none():
+    assert normalize_body("") == ""
+    assert normalize_body(None) == ""
