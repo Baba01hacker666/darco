@@ -87,7 +87,7 @@ structured evidence (diffs, findings, site maps) back as JSON.
 | Module | Command | What it probes |
 | --- | --- | --- |
 | `darco/sqli.py` | `darco sql` | Quote balancing, arithmetic evaluation, boolean differential, OR-logic / hidden data (`sql_logic`), DB error leaks |
-| `darco/plugins/` | `darco plugins` | Scan plugin registry + hooks; `xml_inject` = XML-body detection & entity-encoded SQLi (WAF bypass) |
+| `darco/plugins/` | `darco plugins` | Scan plugin registry + hooks; `xml_inject` (XML entity SQLi), `timing` (delay matcher). External `*.py` plugins via `--plugin-dir` / `DARCO_PLUGIN_PATH`; plugins can register custom template types |
 | `darco/xmlinject.py` | — | Low-level XML parse / entity-encode / behavioral probes used by `xml_inject` |
 | `darco/xss.py` | `darco xss` | Parameter reflection, context classification, encoding audit |
 | `darco/login.py` | `darco login` / `darco auth` | Login form discovery + SQL auth-bypass payloads |

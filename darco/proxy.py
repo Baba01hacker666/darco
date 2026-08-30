@@ -9,6 +9,7 @@ import httpx
 from .engine import execute
 from .models import BodyType, HistoryRecord, NameValue, Request, SessionState
 from .workspace import Workspace
+from .waf_bypass import apply_bypass
 
 HOP_BY_HOP = {
     "connection",
@@ -38,12 +39,18 @@ class ProxyServer:
         host: str = "127.0.0.1",
         port: int = 8080,
         base_headers: list[NameValue] | None = None,
+        bypass: bool = False,
+        bypass_techniques: list[str] | None = None,
+        origin_ip: str | None = None,
     ):
         self.workspace = workspace
         self.session = session
         self.host = host
         self.port = port
         self.base_headers = base_headers or []
+        self.bypass = bypass
+        self.bypass_techniques = bypass_techniques
+        self.origin_ip = origin_ip
         self._stop: asyncio.Event | None = None
         self._started = threading.Event()
         self._thread: threading.Thread | None = None
@@ -150,6 +157,10 @@ class ProxyServer:
             follow_redirects=False,
             source="proxy",
         )
+        if self.bypass:
+            req, _applied = apply_bypass(
+                req, self.bypass_techniques, origin_ip=self.origin_ip
+            )
         try:
             raw_resp = await asyncio.to_thread(self._forward_and_record, req)
         except httpx.HTTPError as exc:

@@ -27,7 +27,7 @@ you care about.
 
 ```
 darco/
-  cli.py          click command wiring, JSON output contract
+  cli/            click command wiring, one cmd_* module per family, JSON output contract
   models.py       Pydantic v2 data models (Request, Response, ...)
   workspace.py    Workspace storage: history.jsonl, session.json, bodies/
   engine.py       HTTP execution + session capture/replay
@@ -36,7 +36,7 @@ darco/
   login.py        login form finder + SQL auth-bypass + smart credential generator
   admin.py        admin panel & console discovery + authentication classification
   templates/      Nuclei-compatible attack template engine, matchers, and built-in catalog
-  plugins/        scan plugin registry + built-ins (xml_inject)
+  plugins/        scan plugin registry + built-ins (xml_inject, timing); loads external *.py plugins
   xmlinject.py    XML body parsing/entity-encoding primitives
   guidance.py     human-readable debrief notes for structured output
   diff.py         response diffing with volatile-token normalization

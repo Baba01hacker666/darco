@@ -10,8 +10,12 @@ stored XSS, …) can be added as self-contained modules instead of growing
 - `darco/plugins/__init__.py` — `ScanPlugin` base class, `_REGISTRY`,
   `register_plugin`, `registered_plugins()`, `active_plugins()`.
 - Built-in plugins live in `darco/plugins/` and register themselves when the
-  package is imported.
-- `darco plugins` lists every registered plugin (name + description).
+  package is imported (`xml_inject`, `timing`).
+- External plugins are plain `*.py` files loaded with `--plugin-dir DIR`
+  (repeatable; supported by `darco sql` and `darco template run`) or via the
+  colon-separated `DARCO_PLUGIN_PATH` environment variable.
+- `darco plugins` lists every registered plugin (name, description, source)
+  plus all registered custom template matcher/extractor types.
 - `darco sql` / `darco sqli` accept `--plugin NAME` (run only these) and
   `--skip-plugin NAME` (disable one); both are repeatable.
 
@@ -21,6 +25,7 @@ stored XSS, …) can be added as self-contained modules instead of growing
 class ScanPlugin:
     name: str = ""
     description: str = ""
+    source: str = "builtin"
 
     def collect_params(self, request, include_state_fields=False, param_filter=None):
         # -> list[(param_type, name, value)] contributed to the sqli scan
@@ -34,6 +39,15 @@ class ScanPlugin:
     def after_scan(self, request, session, result):
         # summary findings or cleanup, once per scan
         pass
+
+    def template_matcher_types(self) -> dict:
+        # {type_name: fn(matcher, resp, elapsed_ms) -> (matched, items)}
+        # synced into darco.templates.custom when the plugin loads
+        return {}
+
+    def template_extractor_types(self) -> dict:
+        # {type_name: fn(extractor, resp) -> {name: [values]}}
+        return {}
 ```
 
 `scan_sqli` gathers parameters from query/form/json sources **plus** every
@@ -81,6 +95,21 @@ darco plugins                 # list available plugins
 The finding's `curl` field is a copy-paste replay command for manual
 verification (shown as **Verify manually** in markdown output).
 
+## Built-in: `timing`
+
+Registers the `delay` custom template matcher so YAML templates can detect
+time-based blind behavior:
+
+```yaml
+matchers:
+  - type: delay
+    min_ms: 2000   # fires when the request took >= 2000 ms
+```
+
+It is also the reference example for plugins that extend the template engine:
+`template_matcher_types()` returns `{"delay": _match_delay}` and darco syncs
+it into the custom-type registry on load.
+
 ## Adding a plugin
 
 1. Create `darco/plugins/<name>.py` subclassing `ScanPlugin` and decorated
@@ -88,6 +117,11 @@ verification (shown as **Verify manually** in markdown output).
 2. Import it from `darco/plugins/__init__.py` so it registers at startup.
 3. Add tests in `tests/test_plugins.py` (dispatch, filtering, findings).
 4. Run `.venv/bin/python -m pytest -q` before finishing.
+
+External plugins skip steps 1-2: drop a standalone `*.py` file in any
+directory and point `--plugin-dir` at it (or add the directory to
+`DARCO_PLUGIN_PATH`). The file just needs the same
+`@register_plugin`-decorated subclass.
 
 Keep low-level helpers out of plugins: `darco/xmlinject.py` holds the XML
 parsing/encoding/probe primitives, and `xml_inject` (the plugin) only wires

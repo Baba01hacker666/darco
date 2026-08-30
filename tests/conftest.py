@@ -1,3 +1,4 @@
+import html
 import json
 import re
 import sys
@@ -46,6 +47,10 @@ def _xml_stock(store_id: str):
 
 class FixtureHandler(BaseHTTPRequestHandler):
     attempts: ClassVar[dict] = {}
+    comments: ClassVar[dict[int, list[str]]] = {}
+    safe_comments: ClassVar[dict[int, list[str]]] = {}
+    csrf_token: ClassVar[str] = "tok-initial"
+    csrf_counter: ClassVar[int] = 0
 
     def log_message(self, *args):  # silence
         pass
@@ -84,6 +89,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
 <a href="/error">error</a>
 <a href="/redirect?url=/login">next page</a>
 <a href="/file?path=report.pdf">download report</a>
+<a href="/post?postId=1">blog post</a>
+<a href="/safe-post?postId=1">sanitized blog post</a>
 <script src="/js/app.js"></script>
 </body></html>""",
             )
@@ -132,6 +139,37 @@ const ws = new WebSocket('/ws/events');""",
             )
         elif path == "/backup":
             self._send(200, "backup data")
+        elif path in ("/post", "/safe-post"):
+            FixtureHandler.csrf_counter += 1
+            FixtureHandler.csrf_token = f"tok-{FixtureHandler.csrf_counter}"
+            pid = int(qs.get("postId", ["1"])[0] or 1)
+            store = (
+                FixtureHandler.comments
+                if path == "/post"
+                else FixtureHandler.safe_comments
+            )
+            action = "/post/comment" if path == "/post" else "/safe-post/comment"
+            rendered = "".join(
+                # Vulnerable page echoes raw; safe page HTML-escapes.
+                (c if path == "/post" else html.escape(c))
+                + "<br>"
+                for c in store.get(pid, [])
+            )
+            self._send(
+                200,
+                f"""<html><body>
+<h1>Post {pid}</h1>
+<div class="comments">{rendered}</div>
+<form method="POST" action="{action}">
+<input type="hidden" name="csrf" value="{FixtureHandler.csrf_token}">
+<input type="hidden" name="postId" value="{pid}">
+<textarea name="comment"></textarea>
+<input name="name">
+<input type="email" name="email">
+<button type="submit">comment</button>
+</form>
+</body></html>""",
+            )
         elif path == "/redirect":
             dest = qs.get("url", [""])[0]
             if dest.startswith(("http://", "https://", "//")):
@@ -255,6 +293,24 @@ const ws = new WebSocket('/ws/events');""",
                 )
             else:
                 self._send(200, json.dumps({"stock": stock}), ctype="application/json")
+        elif path in ("/post/comment", "/safe-post/comment"):
+            fields = parse_qs(body, keep_blank_values=True)
+            if fields.get("csrf", [""])[0] != FixtureHandler.csrf_token:
+                self._send(403, "invalid csrf", ctype="text/plain")
+                return
+            try:
+                pid = int(fields.get("postId", ["1"])[0] or 1)
+            except ValueError:
+                pid = 1
+            comment = fields.get("comment", [""])[0]
+            store = (
+                FixtureHandler.comments
+                if path == "/post/comment"
+                else FixtureHandler.safe_comments
+            )
+            store.setdefault(pid, []).append(comment)
+            dest = "/post" if path == "/post/comment" else "/safe-post"
+            self._send(302, "", headers=[("Location", f"{dest}?postId={pid}")])
         else:
             self._send(404, "not found")
 
@@ -274,6 +330,10 @@ def app():
 @pytest.fixture(autouse=True)
 def _reset_app_state():
     FixtureHandler.attempts.clear()
+    FixtureHandler.comments.clear()
+    FixtureHandler.safe_comments.clear()
+    FixtureHandler.csrf_token = "tok-initial"
+    FixtureHandler.csrf_counter = 0
 
 
 @pytest.fixture()

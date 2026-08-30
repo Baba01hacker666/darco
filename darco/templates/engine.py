@@ -6,11 +6,14 @@ import asyncio
 import random
 import re
 import string
+import time
 from urllib.parse import urlsplit
 
 import httpx
 
 from ..models import Finding
+from .custom import get_extractor_type, get_matcher_type
+from .dsl import evaluate_dsl
 from .models import (
     AttackTemplate,
     TemplateExtractor,
@@ -69,7 +72,9 @@ def _get_target_part(resp: httpx.Response, part: str) -> str:
     return resp.text or ""
 
 
-def _evaluate_matcher(matcher: TemplateMatcher, resp: httpx.Response) -> tuple[bool, list[str]]:
+def _evaluate_matcher(
+    matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: float = 0.0
+) -> tuple[bool, list[str]]:
     target_text = _get_target_part(resp, matcher.part)
     matched_items: list[str] = []
     matched = False
@@ -120,12 +125,43 @@ def _evaluate_matcher(matcher: TemplateMatcher, resp: httpx.Response) -> tuple[b
 
     elif matcher.type == "size":
         body_len = len(resp.content)
-        if matcher.status and body_len in matcher.status:
+        sizes = matcher.sizes or matcher.status  # status fallback: legacy templates
+        if sizes and body_len in sizes:
             matched = True
             matched_items.append(str(body_len))
 
+    elif matcher.type == "dsl":
+        try:
+            req_url_val = str(resp.request.url)
+        except (RuntimeError, AttributeError):
+            req_url_val = ""
+        dsl_vars = {
+            "status_code": resp.status_code,
+            "content_length": len(resp.content),
+            "body": resp.text or "",
+            "header": "\n".join(f"{k}: {v}" for k, v in resp.headers.items()),
+            "all": _get_target_part(resp, "all"),
+            "url": req_url_val,
+            "elapsed_ms": round(elapsed_ms),
+        }
+        for expr in matcher.dsl:
+            if evaluate_dsl(expr, dsl_vars):
+                matched = True
+                matched_items.append(expr)
+
     else:
-        matched = False
+        fn = get_matcher_type(matcher.type)
+        if fn is None:
+            matched = False
+        else:
+            try:
+                result = fn(matcher, resp, elapsed_ms)
+            except Exception:
+                result = (False, [])
+            if isinstance(result, tuple) and len(result) == 2:
+                matched, matched_items = bool(result[0]), list(result[1])
+            else:
+                matched, matched_items = bool(result), []
 
     if matcher.negative:
         matched = not matched
@@ -133,38 +169,81 @@ def _evaluate_matcher(matcher: TemplateMatcher, resp: httpx.Response) -> tuple[b
     return matched, matched_items
 
 
-def _evaluate_extractors(extractors: list[TemplateExtractor], resp: httpx.Response) -> dict[str, list[str]]:
-    extracted: dict[str, list[str]] = {}
-    for ext in extractors:
-        target_text = _get_target_part(resp, ext.part)
-        name = ext.name or ext.type
+def _json_walk(data, dotted: str):
+    """Resolve a dot-notation path (a.b.0.c) inside parsed JSON."""
+    cur = data
+    for key in dotted.split("."):
+        if isinstance(cur, dict) and key in cur:
+            cur = cur[key]
+        elif isinstance(cur, list) and key.isdigit() and int(key) < len(cur):
+            cur = cur[int(key)]
+        else:
+            return None
+    return cur
 
-        if ext.type == "regex":
-            for r_pat in ext.regex:
-                try:
-                    matches = re.findall(r_pat, target_text, re.IGNORECASE)
-                    for m in matches:
-                        val = m[ext.group - 1] if isinstance(m, tuple) and len(m) >= ext.group else (m if isinstance(m, str) else str(m))
-                        extracted.setdefault(name, []).append(str(val))
-                except (re.error, IndexError):
-                    pass
 
-        elif ext.type == "kval":
-            for k in ext.kval:
-                v = resp.headers.get(k)
-                if v:
-                    extracted.setdefault(name, []).append(v)
+def _evaluate_extractor(ext: TemplateExtractor, resp: httpx.Response) -> dict[str, list[str]]:
+    target_text = _get_target_part(resp, ext.part)
+    name = ext.name or ext.type
 
-        elif ext.type == "json":
+    if ext.type == "regex":
+        extracted: dict[str, list[str]] = {}
+        for r_pat in ext.regex:
             try:
-                data = resp.json()
-                for j_key in ext.json_keys:
-                    if isinstance(data, dict) and j_key in data:
-                        extracted.setdefault(name, []).append(str(data[j_key]))
-            except (ValueError, TypeError, KeyError):
+                matches = re.findall(r_pat, target_text, re.IGNORECASE)
+                for m in matches:
+                    val = m[ext.group - 1] if isinstance(m, tuple) and len(m) >= ext.group else (m if isinstance(m, str) else str(m))
+                    extracted.setdefault(name, []).append(str(val))
+            except (re.error, IndexError):
                 pass
+        return extracted
 
-    return extracted
+    if ext.type == "kval":
+        out = {}
+        for k in ext.kval:
+            v = resp.headers.get(k)
+            if v:
+                out.setdefault(name, []).append(v)
+        return out
+
+    if ext.type == "json":
+        out = {}
+        try:
+            data = resp.json()
+            for j_key in ext.json_keys:
+                val = _json_walk(data, j_key)
+                if val is not None:
+                    out.setdefault(name, []).append(str(val))
+        except (ValueError, TypeError):
+            pass
+        return out
+
+    fn = get_extractor_type(ext.type)
+    if fn is None:
+        return {}
+    try:
+        result = fn(ext, resp)
+    except Exception:
+        return {}
+    return result if isinstance(result, dict) else {}
+
+
+def _evaluate_extractors(
+    extractors: list[TemplateExtractor], resp: httpx.Response
+) -> tuple[dict[str, list[str]], set[str]]:
+    """Run all extractors; returns (values_by_name, internal_names)."""
+    extracted: dict[str, list[str]] = {}
+    internal_names: set[str] = set()
+    for ext in extractors:
+        vals = _evaluate_extractor(ext, resp)
+        for k, v in vals.items():
+            if ext.internal:
+                internal_names.add(k)
+            extracted.setdefault(k, [])
+            for item in v:
+                if item not in extracted[k]:
+                    extracted[k].append(item)
+    return extracted, internal_names
 
 
 async def execute_template_on_target(
@@ -174,13 +253,17 @@ async def execute_template_on_target(
     client: httpx.AsyncClient | None = None,
     timeout: float = 10.0,
     verify: bool = True,
+    extra_variables: dict[str, str] | None = None,
 ) -> tuple[list[TemplateMatchResult], list[Finding], int]:
     results: list[TemplateMatchResult] = []
     findings: list[Finding] = []
     requests_count = 0
 
+    # Mutable so extractor values can chain into subsequent requests.
     vars_dict = _extract_url_components(target)
     vars_dict.update(template.variables)
+    if extra_variables:
+        vars_dict.update({k: str(v) for k, v in extra_variables.items()})
 
     managed_client = client is None
     async_client = client or httpx.AsyncClient(
@@ -191,7 +274,10 @@ async def execute_template_on_target(
     )
 
     try:
+        stop = False
         for req in template.requests:
+            if stop:
+                break
             for raw_path in req.path:
                 req_url = _substitute_variables(raw_path, vars_dict)
                 req_body = _substitute_variables(req.body, vars_dict) if req.body else None
@@ -203,6 +289,7 @@ async def execute_template_on_target(
                     req_headers["User-Agent"] = USER_AGENT
 
                 requests_count += 1
+                started = time.perf_counter()
                 try:
                     resp = await async_client.request(
                         req.method,
@@ -213,12 +300,13 @@ async def execute_template_on_target(
                     )
                 except (httpx.HTTPError, OSError, TimeoutError):
                     continue
+                elapsed_ms = (time.perf_counter() - started) * 1000.0
 
                 all_matched_words: list[str] = []
                 matcher_evals: list[bool] = []
 
                 for m in req.matchers:
-                    m_ok, m_words = _evaluate_matcher(m, resp)
+                    m_ok, m_words = _evaluate_matcher(m, resp, elapsed_ms)
                     matcher_evals.append(m_ok)
                     if m_ok:
                         all_matched_words.extend(m_words)
@@ -232,14 +320,23 @@ async def execute_template_on_target(
                 else:
                     is_matched = resp.status_code == 200
 
+                # Extracted values always become variables for later requests
+                # in this template (multi-step attack chains).
+                extracted, internal_names = _evaluate_extractors(req.extractors, resp)
+                for k, vals in extracted.items():
+                    if vals:
+                        vars_dict.setdefault(k, vals[0])
+
                 if is_matched:
-                    extracted = _evaluate_extractors(req.extractors, resp)
+                    public_extracted = {
+                        k: v for k, v in extracted.items() if k not in internal_names
+                    }
                     evidence = f"Matched {template.info.name} at {req_url} (HTTP {resp.status_code})"
                     if all_matched_words:
                         matched_words_str = ", ".join(all_matched_words[:5])
                         evidence += f" [Matched: {matched_words_str}]"
-                    if extracted:
-                        ext_str = ", ".join(f"{k}={v}" for k, v in extracted.items())
+                    if public_extracted:
+                        ext_str = ", ".join(f"{k}={v}" for k, v in public_extracted.items())
                         evidence += f" [Extracted: {ext_str}]"
 
                     curl_cmd = f'curl -k -i -X {req.method} "{req_url}"'
@@ -251,7 +348,7 @@ async def execute_template_on_target(
                         matched_url=req_url,
                         matcher_type=req.matchers[0].type if req.matchers else "status",
                         matched_words=all_matched_words,
-                        extracted_data=extracted,
+                        extracted_data=public_extracted,
                         curl=curl_cmd,
                         evidence=evidence,
                         remediation=template.info.remediation,
@@ -271,6 +368,7 @@ async def execute_template_on_target(
                     )
 
                     if req.stop_at_first_match:
+                        stop = True
                         break
 
     finally:
@@ -287,6 +385,7 @@ async def run_template_scan(
     workers: int = 10,
     timeout: float = 10.0,
     verify: bool = True,
+    extra_variables: dict[str, str] | None = None,
 ) -> TemplateScanReport:
     target_list = [targets] if isinstance(targets, str) else targets
     primary_target = target_list[0] if target_list else ""
@@ -307,7 +406,12 @@ async def run_template_scan(
             nonlocal total_requests
             async with sem:
                 res_list, f_list, reqs = await execute_template_on_target(
-                    tmpl, tgt, client=client, timeout=timeout, verify=verify
+                    tmpl,
+                    tgt,
+                    client=client,
+                    timeout=timeout,
+                    verify=verify,
+                    extra_variables=extra_variables,
                 )
                 total_requests += reqs
                 all_matched.extend(res_list)

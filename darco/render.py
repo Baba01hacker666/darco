@@ -76,7 +76,23 @@ def md_plugins(d: dict) -> str:
     for r_ in rows:
         name = r_.get("name") or "?"
         desc = r_.get("description") or ""
-        lines.append(f"- **`{name}`** — {desc}")
+        source = r_.get("source") or "builtin"
+        origin = "" if source == "builtin" else f" _(from `{source}`)_"
+        lines.append(f"- **`{name}`** — {desc}{origin}")
+    custom = d.get("custom_types") or {}
+    matchers = custom.get("matchers") or []
+    extractors = custom.get("extractors") or []
+    if matchers:
+        lines.append("")
+        lines.append(
+            "Custom template matcher types: "
+            + ", ".join(f"`{m}`" for m in matchers)
+        )
+    if extractors:
+        lines.append(
+            "Custom template extractor types: "
+            + ", ".join(f"`{e}`" for e in extractors)
+        )
     lines.append("")
     lines.append(
         "Enable/disable per scan with `darco sql --plugin NAME` / `--skip-plugin NAME`."
@@ -356,7 +372,7 @@ def md_record(record: dict) -> str:
 
 def md_fuzz(d: dict) -> str:
     lines = [
-        "# Fuzz run",
+        "# Fuzz run (smart v2)",
         "",
         f"- **variants fired**: `{d.get('total_variants')}`",
         f"- **anomalies found**: `{d.get('anomalies')}`",
@@ -371,15 +387,69 @@ def md_fuzz(d: dict) -> str:
     lines.append("")
     for r in results:
         label = r.get("label")
+        sev = r.get("severity")
         anomaly = r.get("anomaly")
+        anomalies = r.get("anomalies") or ([anomaly] if anomaly else [])
         detail = r.get("detail") or ""
         status = r.get("status")
         muts = ", ".join(f"`{m}`" for m in r.get("mutations", [])) or "—"
-        lines.append(f"- **{label}** → `{anomaly}`")
+        sev_badge = f" (sev {sev})" if sev else ""
+        lines.append(f"- **{label}** → `{', '.join(anomalies)}`{sev_badge}")
         if status is not None:
             lines.append(f"  - status: `{status}`")
         lines.append(f"  - what happened: {detail}")
         lines.append(f"  - did: {muts}")
+    return "\n".join(lines)
+
+
+def md_transport(d: dict) -> str:
+    target = d.get("target") or ""
+    lines = [f"# Deep transport probe: `{target}`", ""]
+
+    h2 = d.get("http2") or {}
+    lines.append("## HTTP/2")
+    if h2.get("error"):
+        lines.append(f"  - error: `{h2['error']}`")
+    else:
+        lines.append(f"  - supported: `{'yes' if h2.get('http2') else 'no'}`")
+        lines.append(f"  - negotiated: `{h2.get('negotiated', '?')}`")
+        if h2.get("setttings_frame_seen"):
+            lines.append("  - server SETTINGS frame observed")
+        if h2.get("note"):
+            lines.append(f"  - {h2['note']}")
+
+    tls = d.get("tls") or {}
+    lines.append("")
+    lines.append("## TLS / JA3 fingerprint")
+    if tls.get("error"):
+        lines.append(f"  - error: `{tls['error']}`")
+    else:
+        lines.append(f"  - tls_version: `{tls.get('tls_version', '?')}`")
+        lines.append(f"  - negotiated_cipher: `{tls.get('negotiated_cipher', '?')}`")
+        lines.append(f"  - ja3: `{tls.get('ja3', '')}`")
+        if tls.get("server_ja3s"):
+            lines.append(f"  - ja3s (server): `{tls.get('server_ja3s')}`")
+
+    sm = d.get("smuggling") or {}
+    lines.append("")
+    lines.append("## Request smuggling / desync")
+    if sm.get("error"):
+        lines.append(f"  - error: `{sm['error']}`")
+    else:
+        finds = sm.get("findings") or []
+        if not finds:
+            lines.append("  - _no desync signal vs clean baseline_")
+        else:
+            for f in finds:
+                lines.append(f"  - **{f.get('technique')}** — {f.get('description')}")
+                if f.get("connection_reset"):
+                    lines.append(
+                        f"    - indicates: {f.get('indicates')} (connection reset / rejected)"
+                    )
+                else:
+                    lines.append(
+                        f"    - indicates: {f.get('indicates')} (delta={f.get('delta_vs_clean')}B)"
+                    )
     return "\n".join(lines)
 
 
@@ -821,6 +891,50 @@ def md_traversal(d: dict) -> str:
     return "\n".join(lines)
 
 
+def md_stored_xss(d: dict) -> str:
+    target = d.get("target") or ""
+    findings = d.get("findings") or []
+    tested_forms = d.get("tested_forms", 0)
+    submissions = d.get("submissions", 0)
+
+    lines = [f"# Stored XSS Audit: `{target}`", ""]
+    lines.append(f"- **Forms Audited**: `{tested_forms}`")
+    lines.append(f"- **Canary Submissions**: `{submissions}`")
+    lines.append(f"- **Stored XSS Findings**: `{len(findings)}`")
+    lines.append("")
+
+    if not findings:
+        notes = d.get("notes") or []
+        lines.append("## Results")
+        lines.append("")
+        lines.append("_No stored XSS confirmed — canaries did not survive rendering unencoded._")
+        for n in notes:
+            lines.append(f"- {n}")
+        return "\n".join(lines)
+
+    lines.append("## Stored XSS Findings")
+    lines.append("")
+    for f in findings:
+        get = lambda k, dflt="": (  # noqa: E731
+            f.get(k) if isinstance(f, dict) else getattr(f, k, dflt)
+        )
+        badge = f"**[{str(get('confidence', 'low')).upper()}]**"
+        lines.append(
+            f"### {badge} Field `{get('param')}` via {get('method')} `{get('form_action')}`"
+        )
+        if get("render_url"):
+            lines.append(f"- **Renders On**: `{get('render_url')}`")
+        lines.append(f"- **Context**: `{get('context')}`")
+        lines.append(f"- **Payload**: `{get('payload')}`")
+        if get("evidence"):
+            lines.append(f"- **Evidence**: {get('evidence')}")
+        if get("suggestion"):
+            lines.append(f"- **Remediation**: {get('suggestion')}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def md_scan(d: dict) -> str:
     target = d.get("target") or ""
     eps = d.get("crawled_endpoints", 0)
@@ -846,6 +960,7 @@ def md_scan(d: dict) -> str:
     lines.append(f"- **XSS Reflections**: `{len(xss)}`")
     lines.append(f"- **Open Redirects**: `{len(d.get('redirect_findings') or [])}`")
     lines.append(f"- **Path Traversals**: `{len(d.get('traversal_findings') or [])}`")
+    lines.append(f"- **Stored XSS**: `{len(d.get('stored_xss_findings') or [])}`")
     lines.append(f"- **Login Bypass Candidates**: `{len(d.get('login_bypasses') or [])}`")
     lines.append(f"- **Total Security Findings**: `{len(findings)}`")
     lines.append("")
@@ -1381,4 +1496,70 @@ def md_template_report(d: dict) -> str:
             lines.append(f"- **Remediation**: {rem}")
         lines.append("")
 
+        return "\n".join(lines)
+
+
+def md_origin(d: dict) -> str:
+    target = d.get("target") or ""
+    lines = [f"# Origin IP discovery: `{target}`", ""]
+    if d.get("error"):
+        lines.append(f"_error: {d['error']}_")
+        return "\n".join(lines)
+    direct = d.get("direct_ips") or []
+    if direct:
+        lines.append(f"- **direct A records**: {', '.join(f'`{ip}`' for ip in direct)}")
+    hosts = d.get("hosts") or []
+    origins = [h for h in hosts if h.get("likely_origin")]
+    if origins:
+        lines.append(f"- **likely origin candidates**: {len(origins)}")
+    lines.append("")
+    if hosts:
+        lines.append("## Resolved hosts")
+        lines.append("")
+        lines.append("| host | IPs | CNAME | source | likely origin |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for h in hosts:
+            ips = ", ".join(h.get("ips") or [])
+            cname = h.get("cname") or "—"
+            lines.append(
+                f"| `{h.get('host')}` | {ips} | {cname} | {h.get('source')} | "
+                f"{'YES' if h.get('likely_origin') else '—'} |"
+            )
+        lines.append("")
+    hist = d.get("historical") or []
+    if hist:
+        lines.append(f"## DNS history ({len(hist)} records)")
+        lines.append("")
+        for e in hist[:40]:
+            lines.append(f"- `{e.get('host')}` → `{e.get('ip')}`")
+        lines.append("")
+    notes = d.get("notes") or []
+    if notes:
+        lines.append("## Notes")
+        for n in notes:
+            lines.append(f"- {n}")
+    return "\n".join(lines)
+
+
+def md_waf_bypass(d: dict) -> str:
+    waf = d.get("waf") or "unknown"
+    lines = [f"# WAF bypass: `{waf}`", ""]
+    lines.append(f"- **origin IP**: {d.get('origin_ip') or '_(none — run `darco origin`)_'}")
+    lines.append(f"- **techniques**: `{d.get('technique_count')}`")
+    lines.append("")
+    for t in d.get("techniques") or []:
+        lines.append(f"## {t.get('name')}  _(`{t.get('id')}`)_")
+        lines.append(f"- {t.get('description')}")
+        hdr = t.get("headers") or []
+        if hdr:
+            lines.append(
+                "- **headers**: "
+                + ", ".join(f"`{h['name']}: {h['value']}`" for h in hdr)
+            )
+        tr = t.get("transforms") or []
+        if tr:
+            lines.append("- **transforms**: " + "; ".join(tr))
+        if t.get("curl_hint"):
+            lines.append(f"- **curl**: `{t['curl_hint']}`")
+        lines.append("")
     return "\n".join(lines)

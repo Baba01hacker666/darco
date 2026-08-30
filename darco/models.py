@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BodyType(str, enum.Enum):
@@ -15,6 +15,8 @@ class BodyType(str, enum.Enum):
 
 class DarcoModel(BaseModel):
     """Base class providing cross-version compatibility for Pydantic v1 and v2."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     def model_copy(
         self, *, deep: bool = False, update: dict[str, Any] | None = None
@@ -153,6 +155,7 @@ class Form(DarcoModel):
     method: str = "GET"
     inputs: list[FormInput] = Field(default_factory=list)
     captcha: bool = False
+    url: str = ""  # page where the form was discovered (used to refresh CSRF tokens)
 
 
 class JsFile(DarcoModel):
@@ -326,6 +329,7 @@ class AutoScanReport(DarcoModel):
     upload_findings: list[UploadFinding] = Field(default_factory=list)
     redirect_findings: list[RedirectFinding] = Field(default_factory=list)
     traversal_findings: list[TraversalFinding] = Field(default_factory=list)
+    stored_xss_findings: list[StoredXssFinding] = Field(default_factory=list)
     login_bypasses: list[LoginBypassFinding] = Field(default_factory=list)
     admin_panels: list[AdminPanel] = Field(default_factory=list)
     technologies: list[TechDetection] = Field(default_factory=list)
@@ -387,6 +391,28 @@ class TraversalScanResult(DarcoModel):
     target: str
     tested_params: list[str] = Field(default_factory=list)
     findings: list[TraversalFinding] = Field(default_factory=list)
+
+
+class StoredXssFinding(DarcoModel):
+    param: str
+    form_action: str
+    method: str = "POST"
+    render_url: str = ""
+    context: str  # "html_body", "html_attribute", "script_context", "html_comment"
+    confidence: str  # "confirmed", "potential"
+    payload: str
+    status_code: int = 0
+    evidence: str = ""
+    suggestion: str = ""
+
+
+class StoredXssAuditResult(DarcoModel):
+    target: str
+    tested_forms: int = 0
+    tested_fields: list[str] = Field(default_factory=list)
+    submissions: int = 0
+    findings: list[StoredXssFinding] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
 
 
 class ApiEndpoint(DarcoModel):

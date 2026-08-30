@@ -50,19 +50,63 @@ requests:
 - Custom variables defined in template `variables:` map.
 
 ### 2. Matchers
-- **Types:**
+- **Native types:**
   - `status`: Match response HTTP status codes (`status: [200, 301]`)
   - `word`: Match substrings in response (`words: ["admin", "dashboard"]`)
   - `regex`: Match regular expression patterns (`regex: ["root:x:0:0"]`)
+  - `size`: Match body length in bytes (`sizes: [1234]`)
+  - `dsl`: Nuclei-style boolean expressions (see below)
+- **Custom types** (from the registry in `darco/templates/custom.py` and plugins):
+  - `binary`: Hex-encoded byte patterns (`binary: ["89504e47"]`)
+  - `xpath`: XPath expressions over an XML body (`xpath: ["/users/user[@role='admin']"]`)
+  - `json`: JSON key paths with dot notation; pin values with `path=value`
+    (`json: ["user.role=admin", "user.tokens.1"]`)
+  - `delay`: Response took >= `min_ms` milliseconds (contributed by the
+    built-in `timing` plugin — time-based blind detection)
 - **Parts:** `body`, `header`, `status`, `all` (default: `body`)
 - **Conditions:** `or` (default), `and`
 - **Negative:** Set `negative: true` to match if the pattern is NOT found.
 - **Matchers Condition:** `matchers-condition: and` / `or` across all declared matchers in a request.
 
+#### DSL expressions
+
+```yaml
+matchers:
+  - type: dsl
+    dsl:
+      - "status_code == 200 && contains(body, 'root:') && !contains(header, 'X-Blocked')"
+```
+
+Variables: `status_code`, `content_length`, `body`, `header`, `all`, `url`,
+`elapsed_ms`. Functions: `contains`, `contains_any`, `startswith`,
+`endswith`, `to_lower`, `to_upper`, `len`, `regex`. Operators: `&&`, `||`,
+`!`, comparisons, parentheses. Evaluated by a safe parser — no `eval`.
+
 ### 3. Extractors
 - `regex`: Extract matched regex capture groups into findings (`group: 1`)
 - `kval`: Extract specific HTTP response headers
-- `json`: Extract JSON properties by key
+- `json`: Extract JSON properties by key — supports nested dot paths
+  (`json: ["user.role", "items.0.id"]`)
+- `xpath`: Extract node text from XML bodies (`xpath: ["//title"]`)
+- `internal: true`: feed the extracted value as a variable to subsequent
+  requests of the same template without showing it in the report output.
+  All extractor values are available as `{{name}}` variables to later
+  requests — enabling multi-step attack chains (fetch token -> replay).
+
+### 4. Registering your own types
+
+```python
+from darco.templates.custom import register_matcher_type
+
+@register_matcher_type("shaprefix")
+def match_shaprefix(matcher, resp, elapsed_ms=0.0):
+    ...  # return (matched: bool, matched_items: list[str])
+```
+
+Scan plugins can do the same via the `template_matcher_types()` /
+`template_extractor_types()` hooks (see `darco/plugins/timing.py` for the
+`delay` matcher), and external plugin directories loaded with
+`--plugin-dir` or `DARCO_PLUGIN_PATH` register automatically on load.
 
 ## CLI Commands
 
@@ -75,6 +119,12 @@ darco template run https://target.test -t ./my-templates/
 
 # Filter by tags and severity
 darco template run https://target.test --tags config,git --severity high,critical
+
+# Inject extra template variables (usable as {{team}})
+darco template run https://target.test --var team=pentest
+
+# Load plugins that contribute custom matcher/extractor types
+darco template run https://target.test --plugin-dir ./my-plugins/
 
 # List available templates
 darco template list

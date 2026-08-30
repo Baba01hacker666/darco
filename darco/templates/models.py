@@ -19,24 +19,34 @@ class TemplateInfo(DarcoModel):
 
 
 class TemplateMatcher(DarcoModel):
-    type: str = "word"  # "word", "regex", "status", "size", "dsl"
+    type: str = "word"  # native: word, regex, status, size, dsl; more via custom registry
     part: str = "body"  # "body", "header", "all", "status", "response"
     condition: str = "or"  # "or", "and"
     negative: bool = False
     words: list[str] = Field(default_factory=list)
     regex: list[str] = Field(default_factory=list)
     status: list[int] = Field(default_factory=list)
+    sizes: list[int] = Field(default_factory=list)
+    dsl: list[str] = Field(default_factory=list)
+    binary: list[str] = Field(default_factory=list)  # hex-encoded patterns (custom)
+    xpath: list[str] = Field(default_factory=list)  # custom xpath matcher
+    json_keys: list[str] = Field(
+        default_factory=list, alias="json"
+    )  # custom json matcher
+    min_ms: int = 0  # custom delay matcher threshold
     case_sensitive: bool = False
 
 
 class TemplateExtractor(DarcoModel):
-    type: str = "regex"  # "regex", "kval", "json"
+    type: str = "regex"  # native: regex, kval, json; more via custom registry
     name: str = ""
     part: str = "body"  # "body", "header", "all"
+    internal: bool = False  # feed value to subsequent requests, hide from output
     regex: list[str] = Field(default_factory=list)
     group: int = 1
     kval: list[str] = Field(default_factory=list)
     json_keys: list[str] = Field(default_factory=list, alias="json")
+    xpath: list[str] = Field(default_factory=list)  # custom xpath extractor
 
 
 class TemplateRequest(DarcoModel):

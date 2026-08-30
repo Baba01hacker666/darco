@@ -92,6 +92,21 @@ def load_template_from_string(content: str, path: str = "") -> AttackTemplate:
             status_list = m.get("status") or m.get("status_code") or []
             if isinstance(status_list, int):
                 status_list = [status_list]
+            sizes_list = m.get("sizes") or m.get("size") or []
+            if isinstance(sizes_list, int):
+                sizes_list = [sizes_list]
+            dsl_list = m.get("dsl") or []
+            if isinstance(dsl_list, str):
+                dsl_list = [dsl_list]
+            binary_list = m.get("binary") or []
+            if isinstance(binary_list, str):
+                binary_list = [binary_list]
+            xpath_list = m.get("xpath") or []
+            if isinstance(xpath_list, str):
+                xpath_list = [xpath_list]
+            json_keys = m.get("json") or m.get("json_keys") or []
+            if isinstance(json_keys, str):
+                json_keys = [json_keys]
 
             matchers.append(
                 TemplateMatcher(
@@ -102,6 +117,12 @@ def load_template_from_string(content: str, path: str = "") -> AttackTemplate:
                     words=words,
                     regex=regex_list,
                     status=status_list,
+                    sizes=sizes_list,
+                    dsl=dsl_list,
+                    binary=binary_list,
+                    xpath=xpath_list,
+                    json_keys=json_keys,
+                    min_ms=int(m.get("min_ms", m.get("min-ms", 0)) or 0),
                     case_sensitive=bool(m.get("case_sensitive", False)),
                 )
             )
@@ -116,19 +137,24 @@ def load_template_from_string(content: str, path: str = "") -> AttackTemplate:
             k_list = ext.get("kval") or []
             if isinstance(k_list, str):
                 k_list = [k_list]
-            j_list = ext.get("json") or []
+            j_list = ext.get("json") or ext.get("json_keys") or []
             if isinstance(j_list, str):
                 j_list = [j_list]
+            x_list = ext.get("xpath") or []
+            if isinstance(x_list, str):
+                x_list = [x_list]
 
             extractors.append(
                 TemplateExtractor(
                     type=ext.get("type", "regex"),
                     name=ext.get("name", ""),
                     part=ext.get("part", "body"),
+                    internal=bool(ext.get("internal", False)),
                     regex=r_list,
                     group=int(ext.get("group", 1)),
                     kval=k_list,
                     json_keys=j_list,
+                    xpath=x_list,
                 )
             )
 

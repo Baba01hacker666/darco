@@ -12,6 +12,7 @@ from darco.plugins import (
     ScanPlugin,
     active_plugins,
     get_plugin,
+    load_plugins_from_dir,
     register_plugin,
     registered_plugins,
 )
@@ -40,17 +41,18 @@ def run(args, cwd, json_only=True):
 
 
 # ------------------------------------------------------------------ registry
-def test_registry_lists_xml_inject():
+def test_registry_lists_builtins():
     names = [p.name for p in registered_plugins()]
     assert "xml_inject" in names
+    assert "timing" in names
     assert get_plugin("xml_inject") is not None
 
 
 def test_active_plugins_filters():
     assert [p.name for p in active_plugins(only=["xml_inject"])] == ["xml_inject"]
-    assert active_plugins(skip=["xml_inject"]) == []
+    assert active_plugins(skip=["xml_inject", "timing"]) == []
     assert active_plugins(only=["does_not_exist"]) == []
-    assert active_plugins(skip=["does_not_exist"]) != []
+    assert "xml_inject" not in [p.name for p in active_plugins(skip=["xml_inject"])]
 
 
 def test_register_plugin_requires_name():
@@ -312,3 +314,86 @@ def test_cli_sql_only_plugin_unknown_name(app, tmp_path):
     # only-mode: unknown plugin filters everything out, tolerated gracefully
     assert data["tested_params"] == []
     assert data["vulnerabilities"] == []
+
+
+# ------------------------------------------------------- external plugin files
+_EXT_PLUGIN_SRC = '''
+import hashlib
+
+from darco.plugins import ScanPlugin, register_plugin
+
+
+def match_shaprefix(matcher, resp, elapsed_ms=0.0):
+    digest = hashlib.sha256(resp.content or b"").hexdigest()
+    hits = [h for h in getattr(matcher, "binary", []) if digest.startswith(h)]
+    return bool(hits), hits
+
+
+@register_plugin
+class ShaPrefixPlugin(ScanPlugin):
+    name = "_ext_sha_prefix"
+    description = "external: sha256-prefix response matcher"
+
+    def template_matcher_types(self):
+        return {"shaprefix": match_shaprefix}
+'''
+
+
+def test_load_external_plugin_dir(tmp_path):
+    from darco.plugins import EXTERNAL_SOURCES, _REGISTRY
+    from darco.templates.custom import registered_matcher_types
+
+    pdir = tmp_path / "myplugins"
+    pdir.mkdir()
+    (pdir / "sha_plugin.py").write_text(_EXT_PLUGIN_SRC)
+    try:
+        loaded = load_plugins_from_dir(pdir)
+        names = {p.name for p in loaded}
+        assert "_ext_sha_prefix" in names
+        assert all(p.source.endswith("sha_plugin.py") for p in loaded)
+        assert "shaprefix" in registered_matcher_types()
+        assert any(str(pdir) in s for s in EXTERNAL_SOURCES)
+
+        # missing dir raises
+        import pytest
+
+        with pytest.raises(FileNotFoundError):
+            load_plugins_from_dir(tmp_path / "nope")
+    finally:
+        _REGISTRY.pop("_ext_sha_prefix", None)
+
+
+def test_darco_plugin_path_env(monkeypatch, tmp_path):
+    from darco.plugins import _REGISTRY, ensure_external_plugins, reset_external_state
+
+    pdir = tmp_path / "envplugins"
+    pdir.mkdir()
+    (pdir / "env_plugin.py").write_text(_EXT_PLUGIN_SRC)
+    monkeypatch.setenv("DARCO_PLUGIN_PATH", str(pdir))
+    reset_external_state()
+    try:
+        ensure_external_plugins()
+        assert "_ext_sha_prefix" in _REGISTRY
+    finally:
+        _REGISTRY.pop("_ext_sha_prefix", None)
+        reset_external_state()
+
+
+def test_timing_plugin_registers_delay_matcher():
+    from darco.plugins import get_plugin
+    from darco.templates.custom import registered_matcher_types
+
+    assert get_plugin("timing") is not None
+    assert "delay" in registered_matcher_types()
+
+
+def test_cli_plugins_command_lists_sources_and_types(tmp_path):
+    res = run(["plugins"], tmp_path)
+    assert res.returncode == 0, res.stderr
+    data = json.loads(res.stdout)
+    by_name = {p["name"]: p for p in data["plugins"]}
+    assert by_name["xml_inject"]["source"] == "builtin"
+    assert "custom_types" in data
+    assert "delay" in data["custom_types"]["matchers"]
+    assert "binary" in data["custom_types"]["matchers"]
+    assert "xpath" in data["custom_types"]["extractors"]

@@ -125,6 +125,7 @@ async def run_auto_scan(
     xss: bool = True,
     redirect: bool = True,
     traversal: bool = True,
+    stored_xss: bool = True,
     upload: bool = True,
     default_creds: bool = True,
     include_state_fields: bool = False,
@@ -405,6 +406,33 @@ async def run_auto_scan(
                     pass
     except (httpx.HTTPError, OSError, TimeoutError, ValueError):
         pass
+
+    # Step 2d: Stored XSS audit — submit canaries through discovered forms
+    # and verify unencoded rendering on later page views.
+    if stored_xss and sitemap.forms:
+        from .stored_xss import audit_stored_xss
+
+        try:
+            sxss_res = audit_stored_xss(
+                sitemap.forms,
+                target=url,
+                timeout=timeout,
+                verify=verify,
+            )
+            for f in sxss_res.findings:
+                report.stored_xss_findings.append(f)
+                all_new_findings.append(
+                    Finding(
+                        id=f"stored-xss-{f.param}-{f.context}",
+                        type=f"stored_xss_{f.context}",
+                        severity="high",
+                        location=f"{f.method} {f.form_action} ({f.param}) -> {f.render_url}",
+                        evidence=f.evidence,
+                        suggestion=f.suggestion,
+                    )
+                )
+        except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+            pass
 
     # Step 3: Check for file upload forms and upload endpoints
     if upload:

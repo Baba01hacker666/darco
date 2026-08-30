@@ -21,15 +21,15 @@ UV_CACHE_DIR=/tmp/uv-cache uv pip install --python .venv/bin/python -e . pytest
 | --- | --- |
 | New curl flag | `darco/ingest/curl.py` (add to flag sets + `apply_value_flag`) |
 | New request shape/field | `darco/models.py` + serialization test |
-| New mutation op | `darco/mutate.py` (op handling + `describe()`) + CLI flag in `darco/cli.py` |
+| New mutation op | `darco/mutate.py` (op handling + `describe()`) + CLI flag in `darco/cli/` |
 | New finding heuristic | `darco/analyze.py` |
 | New crawl signal | `darco/discovery/crawler.py` or `darco/analyze.py` |
 | New fuzz variant | `darco/fuzz.py` (`build_variants`) + `tests/test_fuzz.py` |
 | New SQLi heuristic | `darco/sqli.py` (`scan_sqli`, add a test in `tests/test_sqli.py`) |
-| New audit command | `darco/<name>.py` (typed result model in `models.py`) + CLI command in `darco/cli.py` + md renderer in `darco/render.py` + debrief notes in `darco/guidance.py` |
+| New audit command | `darco/<name>.py` (typed result model in `models.py`) + CLI command in `darco/cli/` + md renderer in `darco/render.py` + debrief notes in `darco/guidance.py` |
 | New login/auth logic | `darco/login.py` + `tests/test_login.py` |
-| New CLI command | `darco/cli.py` (markdown to stdout by default, `--json` for the agent contract; `DarcoError` on failure) |
-| Persistent findings | `darco/analyze.py` (`analyze --save`) + `darco/cli.py` (`findings` group) + `workspace.add_findings` |
+| New CLI command | `darco/cli/` (markdown to stdout by default, `--json` for the agent contract; `DarcoError` on failure) |
+| Persistent findings | `darco/analyze.py` (`analyze --save`) + `darco/cli/` (`findings` group) + `workspace.add_findings` |
 | Proxy behavior | `darco/proxy.py` (keep `_serialize` hop-by-hop rules intact) |
 
 ## Contracts to preserve

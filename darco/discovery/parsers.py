@@ -93,7 +93,9 @@ def extract_forms(soup: BeautifulSoup, base_url: str) -> list[Form]:
                     FormInput(name=name, type="textarea", default=ta.get_text())
                 )
         captcha = _is_captcha(str(form))
-        forms.append(Form(action=action, method=method, inputs=inputs, captcha=captcha))
+        forms.append(
+            Form(action=action, method=method, inputs=inputs, captcha=captcha, url=base_url)
+        )
     return forms
 
 

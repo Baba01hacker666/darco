@@ -56,14 +56,28 @@ approval gates unless explicitly asked.
 - `darco/admin.py` — administrative portal & dashboard discovery, auth
   classification (`login_form`, `exposed_dashboard`, `basic_auth`), and credential audit.
 - `darco/templates/` — Nuclei-compatible attack template engine: YAML/JSON loader,
-  async multi-target execution engine, matchers (`status`, `word`, `regex`),
-  extractors (`regex`, `kval`, `json`), and template scaffolder.
+  async multi-target execution engine, native matchers (`status`, `word`,
+  `regex`, `size`, `dsl`), extractors (`regex`, `kval`, `json` with dot-path
+  nesting), extractor chaining (`internal: true` feeds values to later
+  requests), and a scaffolder. Extra matcher/extractor types live in the
+  custom-type registry (`templates/custom.py`: `binary`, `xpath`, `json`;
+  plugins contribute more — e.g. `timing` provides `delay`). DSL expressions
+  are evaluated by the safe parser in `templates/dsl.py`.
+- `darco/plugins/` — scan plugin registry. Built-ins register on import
+  (`xml_inject`, `timing`); external `*.py` plugins load from `--plugin-dir`
+  or `DARCO_PLUGIN_PATH`. Plugins can also register custom template types via
+  `template_matcher_types()` / `template_extractor_types()` hooks.
 - `darco/proxy.py` — record-only asyncio forward proxy; HTTPS is tunneled
   (CONNECT), not decrypted.
 - `darco/discovery/` — async crawler: same-origin BFS, form/JS/email extraction,
   `robots.txt`/`sitemap.xml` seeding, endpoint inventory + signals.
-- `darco/cli.py` — click CLI wiring; every command emits JSON to stdout and logs
-  to stderr. Expected failures raise `DarcoError` (from `darco/errors.py`).
+- `darco/cli/` — click CLI wiring, split into focused modules: `_group` (root
+  group + `main()`), `_output` (`--format` JSON/md/table contract),
+  `_context` (workspace resolution), `_rawio` (raw HTTP serialization),
+  `_oneshot` (shared on-the-fly request building), and one `cmd_*` module per
+  command family (`send`, `sqli`, `xss`, `auth`, `crawl`, `template`, ...).
+  Every command emits JSON to stdout and logs to stderr. Expected failures
+  raise `DarcoError` (from `darco/errors.py`).
 
 ## Conventions
 
