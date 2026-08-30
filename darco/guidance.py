@@ -616,11 +616,37 @@ def cors_notes(data: dict) -> dict:
     return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
 
 
+# ------------------------------------------------------------------ Sniper / Attack Matrix
+def sniper_notes(data: dict) -> dict:
+    target = data.get("target") or ""
+    mode = data.get("mode") or "sniper"
+    total_req = data.get("total_requests", 0)
+    results = data.get("results") or []
+    anomalies = [r for r in results if r.get("anomaly")]
+
+    verdict = (
+        f"Completed {mode.upper()} attack matrix against `{target}` ({total_req} requests sent, "
+        f"{len(anomalies)} anomaly/deviation responses observed)."
+    )
+    highlights = []
+    for a in anomalies[:5]:
+        p_str = ", ".join(f"{k}={v}" for k, v in (a.get("payloads") or {}).items())
+        highlights.append(f"Request #{a.get('index')}: `{p_str}` → HTTP {a.get('status_code')} ({a.get('body_len')}B, {a.get('elapsed_ms')}ms)")
+
+    next_steps = [
+        "Inspect high-deviation responses with `darco send` for logic bypasses or information leaks.",
+        "Refine payload lists or use Pitchfork/Cluster Bomb mode for multi-field permutations.",
+    ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
 # ------------------------------------------------------------------ dispatcher
 def build_notes(data: dict) -> dict | None:
     """Attach a human-friendly debrief block when the data is recognizable."""
     if not isinstance(data, dict):
         return None
+    if "total_positions" in data and "mode" in data and "results" in data:
+        return sniper_notes(data)
     if "tested_origins" in data and "findings" in data:
         return cors_notes(data)
     if "vulnerabilities" in data and "tested_params" in data:

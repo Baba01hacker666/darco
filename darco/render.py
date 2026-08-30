@@ -1664,3 +1664,41 @@ def md_report(d: dict | str) -> str:
     lines.append("")
 
     return "\n".join(lines)
+
+
+def md_sniper(d: dict) -> str:
+    target = d.get("target") or "target"
+    mode = (d.get("mode") or "sniper").upper()
+    total_pos = d.get("total_positions", 0)
+    total_req = d.get("total_requests", 0)
+    b_status = d.get("baseline_status") or "—"
+    b_len = d.get("baseline_len", 0)
+    results = d.get("results") or []
+
+    lines = [f"# Attack Matrix & Sniper: `{target}`", ""]
+    lines.append(f"- **Mode**: `{mode}`")
+    lines.append(f"- **Positions**: `{total_pos}` | **Total Requests**: `{total_req}`")
+    lines.append(f"- **Baseline**: Status `{b_status}` | Length `{b_len}B`")
+    lines.append("")
+
+    if not results:
+        lines.append("_No request results._")
+        return "\n".join(lines)
+
+    lines.append("| # | Payload(s) | Status | Length | Latency | Match / Anomaly |")
+    lines.append("| --- | --- | --- | --- | --- | --- |")
+    for r in results:
+        idx = r.get("index", 0)
+        p_dict = r.get("payloads") or {}
+        p_str = ", ".join(f"`{k}={v}`" for k, v in p_dict.items()) or "—"
+        status = str(r.get("status_code") or r.get("error") or "—")
+        blen = f"{r.get('body_len', 0)}B"
+        lat = f"{r.get('elapsed_ms', 0)}ms"
+        matches = list(r.get("matches") or [])
+        if r.get("anomaly"):
+            matches.append("ANOMALY")
+        m_str = ", ".join(matches) if matches else "—"
+        lines.append(f"| {idx} | {p_str} | **{status}** | {blen} | {lat} | {m_str} |")
+    lines.append("")
+
+    return "\n".join(lines)

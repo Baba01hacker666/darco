@@ -28,6 +28,7 @@ from . import (  # noqa: F401
     cmd_redirect,
     cmd_report,
     cmd_send,
+    cmd_sniper,
     cmd_sqli,
     cmd_template,
     cmd_transport,

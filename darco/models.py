@@ -466,6 +466,35 @@ class JsAnalysisReport(DarcoModel):
     findings: list[Finding] = Field(default_factory=list)
 
 
+class SniperMode(str, enum.Enum):
+    SNIPER = "sniper"
+    BATTERING_RAM = "battering_ram"
+    PITCHFORK = "pitchfork"
+    CLUSTER_BOMB = "cluster_bomb"
+
+
+class SniperItem(DarcoModel):
+    index: int
+    payloads: dict[str, str] = Field(default_factory=dict)
+    status_code: int | None = None
+    body_len: int = 0
+    elapsed_ms: int = 0
+    matches: list[str] = Field(default_factory=list)
+    extracted: dict[str, str] = Field(default_factory=dict)
+    anomaly: bool = False
+    error: str | None = None
+
+
+class SniperReport(DarcoModel):
+    target: str
+    mode: str = "sniper"
+    total_positions: int = 0
+    total_requests: int = 0
+    baseline_status: int | None = None
+    baseline_len: int = 0
+    results: list[SniperItem] = Field(default_factory=list)
+
+
 def to_json(model: BaseModel) -> dict[str, Any]:
     if hasattr(model, "model_dump"):
         return model.model_dump(mode="json")
@@ -485,3 +514,4 @@ RedirectScanResult.model_rebuild()
 TraversalScanResult.model_rebuild()
 StoredXssAuditResult.model_rebuild()
 CorsScanResult.model_rebuild()
+SniperReport.model_rebuild()
