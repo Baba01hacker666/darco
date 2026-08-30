@@ -330,12 +330,36 @@ class AutoScanReport(DarcoModel):
     redirect_findings: list[RedirectFinding] = Field(default_factory=list)
     traversal_findings: list[TraversalFinding] = Field(default_factory=list)
     stored_xss_findings: list[StoredXssFinding] = Field(default_factory=list)
+    cors_findings: list[CorsFinding] = Field(default_factory=list)
     login_bypasses: list[LoginBypassFinding] = Field(default_factory=list)
     admin_panels: list[AdminPanel] = Field(default_factory=list)
     technologies: list[TechDetection] = Field(default_factory=list)
     wafs: list[WafDetection] = Field(default_factory=list)
     emails: list[str] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
+
+
+class CorsFinding(DarcoModel):
+    origin_tested: str
+    allow_origin: str | None = None
+    allow_credentials: bool = False
+    allow_methods: list[str] = Field(default_factory=list)
+    allow_headers: list[str] = Field(default_factory=list)
+    expose_headers: list[str] = Field(default_factory=list)
+    max_age: int | None = None
+    misconfig_type: str  # "arbitrary_origin_allowed", "null_origin_allowed", "wildcard_with_credentials", "subdomain_prefix_bypass", "preflight_all_methods"
+    confidence: str  # "confirmed", "high", "medium", "low"
+    status_code: int = 0
+    evidence: str = ""
+    suggestion: str = ""
+    curl: str = ""
+    poc_html: str = ""
+
+
+class CorsScanResult(DarcoModel):
+    target: str
+    tested_origins: list[str] = Field(default_factory=list)
+    findings: list[CorsFinding] = Field(default_factory=list)
 
 
 class UploadFinding(DarcoModel):
@@ -460,3 +484,4 @@ UploadAuditResult.model_rebuild()
 RedirectScanResult.model_rebuild()
 TraversalScanResult.model_rebuild()
 StoredXssAuditResult.model_rebuild()
+CorsScanResult.model_rebuild()

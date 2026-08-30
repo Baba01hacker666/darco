@@ -126,6 +126,7 @@ async def run_auto_scan(
     redirect: bool = True,
     traversal: bool = True,
     stored_xss: bool = True,
+    cors: bool = True,
     upload: bool = True,
     default_creds: bool = True,
     include_state_fields: bool = False,
@@ -306,6 +307,27 @@ async def run_auto_scan(
                             location=f"{req.method} {req.url} ({tf.param})",
                             evidence=tf.evidence,
                             suggestion=tf.suggestion,
+                        )
+                    )
+            except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+                pass
+
+        # F. CORS Auditor
+        if cors:
+            try:
+                from .cors import scan_cors
+
+                cors_res = scan_cors(req, session=session)
+                for cf in cors_res.findings:
+                    report.cors_findings.append(cf)
+                    all_new_findings.append(
+                        Finding(
+                            id=f"cors-{cf.misconfig_type}-{req.url[:16]}",
+                            type=f"cors_{cf.misconfig_type}",
+                            severity="high" if cf.confidence in ("confirmed", "high") else "medium",
+                            location=f"{req.method} {req.url}",
+                            evidence=cf.evidence,
+                            suggestion=cf.suggestion,
                         )
                     )
             except (httpx.HTTPError, OSError, TimeoutError, ValueError):

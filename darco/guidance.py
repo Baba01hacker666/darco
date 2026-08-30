@@ -580,11 +580,49 @@ def js_notes(data: dict) -> dict:
     return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
 
 
+# ------------------------------------------------------------------ CORS
+def cors_notes(data: dict) -> dict:
+    target = data.get("target") or ""
+    findings = data.get("findings") or []
+    tested = data.get("tested_origins") or []
+
+    if not findings:
+        return {
+            "verdict": f"No insecure CORS policies detected on `{target}` across {len(tested)} tested origin pattern(s).",
+            "highlights": [
+                f"Tested {len(tested)} origin variants: untrusted origin, null origin, subdomain regex traps."
+            ],
+            "next_steps": [
+                "Verify if internal API endpoints or authenticated endpoints enforce stricter CORS."
+            ],
+        }
+
+    cred_findings = [f for f in findings if f.get("allow_credentials")]
+    verdict = (
+        f"Found {len(findings)} CORS misconfiguration(s) on `{target}`"
+        + (f" ({len(cred_findings)} with credentials enabled!)." if cred_findings else ".")
+    )
+    highlights = []
+    for f in findings[:5]:
+        mtype = f.get("misconfig_type") or "cors_issue"
+        orig = f.get("origin_tested") or ""
+        cred = " + ACAC:true" if f.get("allow_credentials") else ""
+        highlights.append(f"`{mtype}` — accepts `{orig}`{cred}")
+
+    next_steps = [
+        "Open the generated PoC HTML in a browser on an external domain to verify authenticated data theft.",
+        "Fix: remove wildcards/null reflection and validate Origin against an explicit server-side whitelist.",
+    ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
 # ------------------------------------------------------------------ dispatcher
 def build_notes(data: dict) -> dict | None:
     """Attach a human-friendly debrief block when the data is recognizable."""
     if not isinstance(data, dict):
         return None
+    if "tested_origins" in data and "findings" in data:
+        return cors_notes(data)
     if "vulnerabilities" in data and "tested_params" in data:
         return sqli_notes(data)
     if "forms_found" in data and "bypasses" in data:

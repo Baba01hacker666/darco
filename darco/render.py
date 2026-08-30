@@ -1575,3 +1575,92 @@ def md_waf_bypass(d: dict) -> str:
             lines.append(f"- **curl**: `{t['curl_hint']}`")
         lines.append("")
     return "\n".join(lines)
+
+
+def md_cors(d: dict) -> str:
+    target = d.get("target") or "target"
+    findings = d.get("findings") or []
+    tested = d.get("tested_origins") or []
+
+    lines = [f"# CORS Misconfiguration Audit: `{target}`", ""]
+    lines.append(f"- **Tested origins**: {len(tested)}")
+    lines.append(f"- **Misconfigurations found**: {len(findings)}")
+    lines.append("")
+
+    if not findings:
+        lines.append("_No insecure CORS headers or misconfigurations observed._")
+        return "\n".join(lines)
+
+    for idx, f in enumerate(findings, 1):
+        mtype = f.get("misconfig_type") or "cors_issue"
+        conf = str(f.get("confidence") or "medium").upper()
+        orig = f.get("origin_tested") or ""
+        acao = f.get("allow_origin") or "—"
+        acac = "YES" if f.get("allow_credentials") else "NO"
+
+        lines.append(f"## {idx}. [{conf}] `{mtype}`")
+        lines.append(f"- **Tested Origin**: `{orig}`")
+        lines.append(f"- **Access-Control-Allow-Origin**: `{acao}`")
+        lines.append(f"- **Access-Control-Allow-Credentials**: `{acac}`")
+        if f.get("allow_methods"):
+            lines.append(f"- **Allowed Methods**: {', '.join(f.get('allow_methods'))}")
+        lines.append(f"- **Evidence**: {f.get('evidence')}")
+        if f.get("suggestion"):
+            lines.append(f"- **Suggestion**: {f.get('suggestion')}")
+        if f.get("curl"):
+            lines.append(f"- **Reproduction**: `{f.get('curl')}`")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def md_openapi(d: dict | str) -> str:
+    if isinstance(d, str):
+        return f"# OpenAPI Specification (YAML)\n\n```yaml\n{d}\n```"
+    title = d.get("info", {}).get("title", "OpenAPI Specification")
+    ver = d.get("info", {}).get("version", "1.0.0")
+    paths = d.get("paths", {})
+    total_ops = sum(len(methods) for methods in paths.values())
+
+    lines = [f"# {title} (v{ver})", ""]
+    lines.append(f"- **OpenAPI Version**: `{d.get('openapi', '3.0.3')}`")
+    lines.append(f"- **Total Paths**: {len(paths)}")
+    lines.append(f"- **Total Operations**: {total_ops}")
+    lines.append("")
+
+    if paths:
+        lines.append("| Path | Method | Operation ID |")
+        lines.append("| --- | --- | --- |")
+        for p, methods in paths.items():
+            for m, op in methods.items():
+                lines.append(f"| `{p}` | **{m.upper()}** | `{op.get('operationId', '—')}` |")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def md_report(d: dict | str) -> str:
+    if isinstance(d, str):
+        return d
+    runs = d.get("runs") or []
+    results = runs[0].get("results", []) if runs else []
+    lines = ["# Security Scan Report (SARIF Summary)", ""]
+    lines.append(f"- **Total Results**: {len(results)}")
+    lines.append("")
+
+    if not results:
+        lines.append("_No findings in report._")
+        return "\n".join(lines)
+
+    lines.append("| Level | Rule ID | Location | Message |")
+    lines.append("| --- | --- | --- | --- |")
+    for r in results:
+        lvl = r.get("level", "note").upper()
+        rid = r.get("ruleId", "")
+        locs = r.get("locations", [])
+        uri = locs[0].get("physicalLocation", {}).get("artifactLocation", {}).get("uri", "—") if locs else "—"
+        msg = r.get("message", {}).get("text", "")[:100]
+        lines.append(f"| **{lvl}** | `{rid}` | `{uri}` | {msg} |")
+    lines.append("")
+
+    return "\n".join(lines)

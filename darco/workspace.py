@@ -170,6 +170,9 @@ class Workspace:
     def list_records(self) -> list[HistoryRecord]:
         return list(self.iter_records())
 
+    def load_history(self) -> list[HistoryRecord]:
+        return self.list_records()
+
     # ------------------------------------------------------------------ findings / sitemap
     def load_findings(self) -> list[Finding]:
         try:
