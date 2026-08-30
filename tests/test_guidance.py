@@ -96,7 +96,11 @@ def test_scan_notes_prioritize_high_medium():
             "xss_reflections": [],
             "upload_findings": [],
             "findings": [
-                {"severity": "high", "type": "sqli_quote_balancing", "location": "/filter"},
+                {
+                    "severity": "high",
+                    "type": "sqli_quote_balancing",
+                    "location": "/filter",
+                },
                 {"severity": "info", "type": "tech_detected", "location": "/"},
             ],
         }
@@ -176,3 +180,88 @@ def test_cli_md_output_includes_debrief(app, tmp_path):
     assert res.returncode == 0, res.stderr
     assert "What Darco thinks" in res.stdout
     assert "Do this next" in res.stdout
+
+
+def test_traversal_notes_highlight_arbitrary_read():
+    notes = build_notes(
+        {
+            "target": "http://app.test/file",
+            "tested_params": ["path"],
+            "findings": [
+                {
+                    "param": "path",
+                    "target_file": "etc/passwd",
+                    "confidence": "confirmed",
+                    "payload": "../../../../etc/passwd",
+                }
+            ],
+        }
+    )
+    assert notes is not None
+    assert "traversal" in notes["verdict"].lower()
+    assert any("etc/passwd" in h for h in notes["highlights"])
+
+
+def test_redirect_notes_highlight_offsite():
+    notes = build_notes(
+        {
+            "target": "http://app.test/redirect",
+            "tested_params": ["url"],
+            "findings": [
+                {
+                    "param": "url",
+                    "redirect_type": "location_header",
+                    "confidence": "confirmed",
+                    "location": "http://evil.com",
+                }
+            ],
+        }
+    )
+    assert notes is not None
+    assert "open redirect" in notes["verdict"].lower()
+    assert any("location_header" in h for h in notes["highlights"])
+
+
+def test_origin_and_transport_and_waf_notes():
+    orig_notes = build_notes(
+        {
+            "target": "example.com",
+            "direct_ips": ["1.2.3.4"],
+            "hosts": [
+                {
+                    "host": "direct.example.com",
+                    "ips": ["1.2.3.4"],
+                    "likely_origin": True,
+                    "source": "subdomain",
+                }
+            ],
+        }
+    )
+    assert orig_notes is not None
+    assert "likely origin" in orig_notes["verdict"].lower()
+
+    trans_notes = build_notes(
+        {
+            "target": "https://example.com",
+            "http2": {"http2": True, "negotiated": "h2"},
+            "smuggling": {"vulnerable": False},
+            "tls": {"ja3_hash": "abc1234"},
+        }
+    )
+    assert trans_notes is not None
+    assert "transport" in trans_notes["verdict"].lower()
+
+    waf_notes = build_notes(
+        {
+            "waf": "Cloudflare",
+            "technique_count": 2,
+            "techniques": [
+                {
+                    "name": "Origin IP Bypass",
+                    "description": "Send Host header to origin IP",
+                }
+            ],
+        }
+    )
+    assert waf_notes is not None
+    assert "waf bypass" in waf_notes["verdict"].lower()

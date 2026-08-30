@@ -3,7 +3,6 @@
 import json
 from unittest import mock
 
-import pytest
 from click.testing import CliRunner
 
 from darco.cli import cli
@@ -25,8 +24,10 @@ def test_build_bypass_cloudflare_no_host_swap_without_origin():
     ids = [t["id"] for t in r["techniques"]]
     assert "host_swap" in ids  # present but as a hint, not applied
     host_swap = next(t for t in r["techniques"] if t["id"] == "host_swap")
-    assert "run `darco origin`" in host_swap["description"] or \
-        "darco origin" in host_swap["description"]
+    assert (
+        "run `darco origin`" in host_swap["description"]
+        or "darco origin" in host_swap["description"]
+    )
 
 
 def test_build_bypass_modsecurity_has_comment_injection():
@@ -80,6 +81,7 @@ def test_apply_bypass_path_normalize():
 # ------------------------------------------------------------------ origin: pure logic
 def test_origin_cdn_cname_detection():
     from darco.origin import _is_cdn_cname
+
     assert _is_cdn_cname("xxx.cloudflare.net")
     assert _is_cdn_cname("xxx.amazonaws.com")
     assert not _is_cdn_cname("origin.internal.corp.com")
@@ -87,6 +89,7 @@ def test_origin_cdn_cname_detection():
 
 def test_origin_dig_parses_only_ips():
     from darco.origin import _dig
+
     with mock.patch("darco.origin.subprocess.run") as run:
         run.return_value = mock.Mock(
             stdout="1.2.3.4\nfoo.cloudflare.net\n5.6.7.8\n", stderr=""
@@ -109,8 +112,10 @@ def test_origin_find_origin_merges_and_flags():
         status_code = 200
         text = "api.test,10.0.0.9\nwww.test,10.0.0.5\n"
 
-    with mock.patch("darco.origin._dig", side_effect=fake_dig), \
-         mock.patch("darco.origin.httpx.get", return_value=FakeResp()):
+    with (
+        mock.patch("darco.origin._dig", side_effect=fake_dig),
+        mock.patch("darco.origin.httpx.get", return_value=FakeResp()),
+    ):
         report = find_origin("test", enum_subdomains=False, use_history=True)
 
     hosts = {h.host: h for h in report.hosts}
@@ -122,7 +127,9 @@ def test_origin_find_origin_merges_and_flags():
 
 # ------------------------------------------------------------------ CLI wiring
 def test_waf_bypass_cli():
-    r = CliRunner().invoke(cli, ["--json", "waf-bypass", "Cloudflare", "--origin-ip", "1.2.3.4"])
+    r = CliRunner().invoke(
+        cli, ["--json", "waf-bypass", "Cloudflare", "--origin-ip", "1.2.3.4"]
+    )
     assert r.exit_code == 0, r.output
     d = json.loads(r.stdout)
     assert d["waf"] == "Cloudflare"
@@ -133,6 +140,7 @@ def test_origin_cli_runs():
     # origin hits the network; just assert the command is wired and errors gracefully
     # when offline by mocking find_origin.
     from darco.origin import OriginReport
+
     with mock.patch(
         "darco.cli.cmd_origin.find_origin",
         return_value=OriginReport(target="x.test", error="offline test"),

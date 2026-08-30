@@ -65,7 +65,16 @@ LDAP_PROBES = ["*)(uid=*))(|(uid=*", "*)(&(objectClass=*"]
 
 BOUNDARY_IDS = ["0", "-1", "9999999999", "1e9", "NaN", "0000001", "1.0", "2**31"]
 TYPE_CONFUSION_WORDS = [
-    "abc", "root", "admin", "NaN", "null", "true", "[]", "{}", "-1", "1e9",
+    "abc",
+    "root",
+    "admin",
+    "NaN",
+    "null",
+    "true",
+    "[]",
+    "{}",
+    "-1",
+    "1e9",
 ]
 EMAIL_PROBES = ["a@b.c", "test@test.com", "root@localhost", "not-an-email"]
 FILENAME_PROBES = [
@@ -135,28 +144,116 @@ def _looks_filename(v: str) -> bool:
 def _looks_path(v: str) -> bool:
     v = v.strip()
     # traversal or absolute path, or a path with directory separators
-    if v.startswith(("/", "./", "../", ".\\", "..\\")) or "/" in v or "\\" in v:
-        return True
-    # bare script extension with no slash is treated as a filename, not a path
-    return False
+    return bool(
+        v.startswith(("/", "./", "../", ".\\", "..\\")) or "/" in v or "\\" in v
+    )
 
 
 _NUMERIC_NAMES = {
-    "id", "user_id", "uid", "account", "account_id", "page", "offset", "limit",
-    "num", "count", "index", "pid", "post", "product", "item", "order", "ref",
-    "category_id", "parent", "child", "start", "end", "year", "month", "day",
+    "id",
+    "user_id",
+    "uid",
+    "account",
+    "account_id",
+    "page",
+    "offset",
+    "limit",
+    "num",
+    "count",
+    "index",
+    "pid",
+    "post",
+    "product",
+    "item",
+    "order",
+    "ref",
+    "category_id",
+    "parent",
+    "child",
+    "start",
+    "end",
+    "year",
+    "month",
+    "day",
 }
-_BOOL_NAMES = {"admin", "debug", "active", "enabled", "disabled", "show", "hide", "flag", "is_", "has_", "can_"}
+_BOOL_NAMES = {
+    "admin",
+    "debug",
+    "active",
+    "enabled",
+    "disabled",
+    "show",
+    "hide",
+    "flag",
+    "is_",
+    "has_",
+    "can_",
+}
 _STRING_NAMES = {
-    "q", "search", "name", "username", "user", "input", "term", "category",
-    "type", "filter", "tag", "sort", "status", "group", "title", "text",
-    "query", "keyword", "email", "mail", "comment", "message", "description",
-    "firstname", "lastname", "city", "country", "address", "phone", "url",
-    "redirect", "return", "next", "file", "filename", "path", "url", "host",
+    "q",
+    "search",
+    "name",
+    "username",
+    "user",
+    "input",
+    "term",
+    "category",
+    "type",
+    "filter",
+    "tag",
+    "sort",
+    "status",
+    "group",
+    "title",
+    "text",
+    "query",
+    "keyword",
+    "email",
+    "mail",
+    "comment",
+    "message",
+    "description",
+    "firstname",
+    "lastname",
+    "city",
+    "country",
+    "address",
+    "phone",
+    "url",
+    "redirect",
+    "return",
+    "next",
+    "file",
+    "filename",
+    "path",
+    "host",
 }
-_FILE_NAMES = {"file", "filename", "upload", "attachment", "image", "avatar", "photo", "doc"}
+_FILE_NAMES = {
+    "file",
+    "filename",
+    "upload",
+    "attachment",
+    "image",
+    "avatar",
+    "photo",
+    "doc",
+}
 _EMAIL_NAMES = {"email", "mail", "e-mail", "username"}
-_PATH_NAMES = {"path", "dir", "directory", "template", "include", "page", "view", "redirect", "url", "return", "next", "host", "domain"}
+_PATH_NAMES = {
+    "path",
+    "dir",
+    "directory",
+    "template",
+    "include",
+    "page",
+    "view",
+    "redirect",
+    "url",
+    "return",
+    "next",
+    "host",
+    "domain",
+}
 _LDAP_NAMES = {"user", "username", "login", "cn", "dn", "uid"}
 
 # classification weights for semantic scoring
@@ -233,34 +330,43 @@ def build_variants(
 
         elif ptype == "numeric":
             for w in TYPE_CONFUSION_WORDS[:3]:
-                add(f"type-confuse:{p.name}={w}",
-                    [Mutation("set_param", name=p.name, value=w)])
+                add(
+                    f"type-confuse:{p.name}={w}",
+                    [Mutation("set_param", name=p.name, value=w)],
+                )
             for b in BOUNDARY_IDS:
-                add(f"boundary:{p.name}={b}",
-                    [Mutation("set_param", name=p.name, value=b)])
+                add(
+                    f"boundary:{p.name}={b}",
+                    [Mutation("set_param", name=p.name, value=b)],
+                )
 
         elif ptype == "email":
             for e in EMAIL_PROBES:
-                add(f"email:{p.name}={e}",
-                    [Mutation("set_param", name=p.name, value=e)])
+                add(
+                    f"email:{p.name}={e}", [Mutation("set_param", name=p.name, value=e)]
+                )
 
         elif ptype == "filename":
             for f in FILENAME_PROBES:
-                add(f"upload:{p.name}={f}",
-                    [Mutation("set_param", name=p.name, value=f)])
+                add(
+                    f"upload:{p.name}={f}",
+                    [Mutation("set_param", name=p.name, value=f)],
+                )
 
         elif ptype == "path":
             for t in PATH_TRAVERSAL:
-                add(f"traversal:{p.name}",
-                    [Mutation("set_param", name=p.name, value=t)])
+                add(
+                    f"traversal:{p.name}", [Mutation("set_param", name=p.name, value=t)]
+                )
             for f in FILENAME_PROBES:
-                add(f"upload:{p.name}={f}",
-                    [Mutation("set_param", name=p.name, value=f)])
+                add(
+                    f"upload:{p.name}={f}",
+                    [Mutation("set_param", name=p.name, value=f)],
+                )
 
         elif ptype == "url":
             for s in SSRF_PROBES:
-                add(f"ssrf:{p.name}",
-                    [Mutation("set_param", name=p.name, value=s)])
+                add(f"ssrf:{p.name}", [Mutation("set_param", name=p.name, value=s)])
 
         elif ptype == "string":
             for sq in SQL_PROBES:
@@ -271,8 +377,7 @@ def build_variants(
                 add(f"cmdi:{p.name}", [Mutation("set_param", name=p.name, value=c)])
             if p.name.lower() in _LDAP_NAMES:
                 for l in LDAP_PROBES:
-                    add(f"ldap:{p.name}",
-                        [Mutation("set_param", name=p.name, value=l)])
+                    add(f"ldap:{p.name}", [Mutation("set_param", name=p.name, value=l)])
 
         else:  # generic
             for sq in SQL_PROBES[:2]:
@@ -281,9 +386,14 @@ def build_variants(
                 add(f"xss:{p.name}", [Mutation("set_param", name=p.name, value=x)])
 
     # header-level injection probes (work regardless of params)
-    add("header-crlf", [
-        Mutation("set_header", name="X-Forwarded-For", value="127.0.0.1\r\nX-Injected: 1")
-    ])
+    add(
+        "header-crlf",
+        [
+            Mutation(
+                "set_header", name="X-Forwarded-For", value="127.0.0.1\r\nX-Injected: 1"
+            )
+        ],
+    )
     # broken-auth check
     add("strip-session", [Mutation("strip_session")])
     return variants
@@ -304,7 +414,9 @@ def _shannon_entropy(s: str) -> float:
 
 def _structure_hash(s: str) -> int:
     """Coarse structural signature: tag/key sequence, ignoring values."""
-    toks = re.findall(r"</?[a-zA-Z][\w-]*>|[\{\}\[\],:]|[A-Za-z_][A-Za-z0-9_]*\s*[:=]|[0-9]+", s)
+    toks = re.findall(
+        r"</?[a-zA-Z][\w-]*>|[\{\}\[\],:]|[A-Za-z_][A-Za-z0-9_]*\s*[:=]|[0-9]+", s
+    )
     return hash(" ".join(toks[:200]))
 
 
@@ -313,7 +425,9 @@ def _classify(
 ) -> dict | None:
     if error:
         return {
-            "label": label, "anomaly": "request_error", "detail": error,
+            "label": label,
+            "anomaly": "request_error",
+            "detail": error,
             "severity": _ANOMALY_WEIGHT["request_error"],
         }
     if resp is None:
@@ -341,7 +455,11 @@ def _classify(
             break
     if matched_err:
         out["anomalies"].append("error_leak")
-        if re.search(r"SQL syntax|ORA-|pg_query|mysql_|SQL Server|Incorrect syntax", body, re.IGNORECASE):
+        if re.search(
+            r"SQL syntax|ORA-|pg_query|mysql_|SQL Server|Incorrect syntax",
+            body,
+            re.IGNORECASE,
+        ):
             out["anomalies"].append("sql_error")
         out.setdefault("detail", f"error pattern matched: {matched_err}")
 

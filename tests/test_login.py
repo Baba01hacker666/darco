@@ -207,9 +207,16 @@ class FakeDefaultCredClient:
     """Accepts admin:admin default credentials."""
 
     def get(self, url, headers=None, params=None):
-        if params and params.get("username") == "admin" and params.get("password") == "admin":
+        if (
+            params
+            and params.get("username") == "admin"
+            and params.get("password") == "admin"
+        ):
             return FakeResp(302, "", headers={"location": "/dashboard"})
-        return FakeResp(200, '<form method="GET" action="http://fake/login"><input name="username"><input name="password" type="password"></form>')
+        return FakeResp(
+            200,
+            '<form method="GET" action="http://fake/login"><input name="username"><input name="password" type="password"></form>',
+        )
 
     def post(self, url, data=None, headers=None):
         u = data.get("username", "") if data else ""
@@ -230,7 +237,9 @@ def test_audit_login_default_credentials():
         client_factory=lambda t, v: FakeDefaultCredClient(),
     )
     assert result.tested_forms == 1
-    assert any(b.param == "credentials" and b.payload == "admin:admin" for b in result.bypasses)
+    assert any(
+        b.param == "credentials" and b.payload == "admin:admin" for b in result.bypasses
+    )
     cred_finding = next(b for b in result.bypasses if b.payload == "admin:admin")
     assert cred_finding.confidence == "confirmed"
     assert "Default credentials accepted" in cred_finding.evidence

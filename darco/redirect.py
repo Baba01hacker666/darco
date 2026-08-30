@@ -107,6 +107,15 @@ def _clone_and_mutate_param(
     return req
 
 
+def _looks_like_redirect_val(val: str) -> bool:
+    if not val or len(val) > 1024:
+        return False
+    v = val.strip().lower()
+    return v.startswith(("http://", "https://", "//", "ftp://")) or (
+        v.startswith("/") and len(v) > 1 and not v.startswith("/api/")
+    )
+
+
 def _is_redirect_candidate(name: str) -> bool:
     normalized = name.lower().replace("-", "").replace("_", "").replace(".", "")
     if normalized in REDIRECT_PARAM_HINTS:
@@ -123,7 +132,12 @@ def _location_of(resp: Response, canary: str) -> str:
 
 
 _META_PATTERNS = ("http-equiv", "refresh")
-_JS_PATTERNS = ("location.href", "location.replace", "window.location", "document.location")
+_JS_PATTERNS = (
+    "location.href",
+    "location.replace",
+    "window.location",
+    "document.location",
+)
 
 
 def _body_redirect_of(body: str, canary: str) -> tuple[str, str] | None:
@@ -155,21 +169,26 @@ def scan_redirect(
 
     candidates: list[tuple[str, str]] = []  # (param_type, param_name)
     sources = (
-        [("query", p.name) for p in request.params]
-        + [("form", p.name) for p in request.body_form]
+        [("query", p.name, p.value or "") for p in request.params]
+        + [("form", p.name, p.value or "") for p in request.body_form]
         + (
-            [("json", k) for k in request.body_json]
+            [
+                ("json", k, str(v) if v is not None else "")
+                for k, v in request.body_json.items()
+            ]
             if isinstance(request.body_json, dict)
             else []
         )
     )
-    for p_type, name in sources:
-        if param_filter and name != param_filter:
-            continue
-        if not include_state_fields and is_state_field(name):
-            continue
-        if not _is_redirect_candidate(name):
-            continue
+    for p_type, name, val in sources:
+        if param_filter:
+            if name != param_filter:
+                continue
+        else:
+            if not include_state_fields and is_state_field(name):
+                continue
+            if not (_is_redirect_candidate(name) or _looks_like_redirect_val(val)):
+                continue
         candidates.append((p_type, name))
 
     result = RedirectScanResult(
@@ -232,4 +251,4 @@ def scan_redirect(
     return result
 
 
-__all__ = ["scan_redirect", "REDIRECT_PARAM_HINTS"]
+__all__ = ["REDIRECT_PARAM_HINTS", "scan_redirect"]

@@ -168,7 +168,11 @@ async def find_admin_panels(
 
                 body = resp.text or ""
                 content_type = resp.headers.get("content-type", "").lower()
-                is_html_content = "html" in content_type or "<html" in body.lower() or "<form" in body.lower()
+                is_html_content = (
+                    "html" in content_type
+                    or "<html" in body.lower()
+                    or "<form" in body.lower()
+                )
 
                 if is_html_content:
                     title = _extract_title(body)
@@ -177,7 +181,9 @@ async def find_admin_panels(
                 if resp.status_code in (301, 302, 303, 307, 308):
                     auth_type = "redirect"
                     redir = resp.headers.get("location", "")
-                    if any(k in redir.lower() for k in ("login", "auth", "signin", "admin")):
+                    if any(
+                        k in redir.lower() for k in ("login", "auth", "signin", "admin")
+                    ):
                         auth_type = "portal_redirect"
 
                 elif resp.status_code == 401:
@@ -200,8 +206,22 @@ async def find_admin_panels(
                             pass
 
                     if auth_type == "unknown":
-                        if any(k in title.lower() for k in ("admin", "dashboard", "control panel", "login", "management", "portal")):
-                            auth_type = "login_form" if "<input" in body.lower() else "exposed_dashboard"
+                        if any(
+                            k in title.lower()
+                            for k in (
+                                "admin",
+                                "dashboard",
+                                "control panel",
+                                "login",
+                                "management",
+                                "portal",
+                            )
+                        ):
+                            auth_type = (
+                                "login_form"
+                                if "<input" in body.lower()
+                                else "exposed_dashboard"
+                            )
                         elif "actuator" in p or "api" in p:
                             auth_type = "api"
                         else:
@@ -213,7 +233,12 @@ async def find_admin_panels(
                 if redirect_url:
                     evidence += f" -> Location: {redirect_url}"
 
-                confidence = "confirmed" if resp.status_code == 200 or auth_type in ("login_form", "basic_auth", "exposed_dashboard") else "high"
+                confidence = (
+                    "confirmed"
+                    if resp.status_code == 200
+                    or auth_type in ("login_form", "basic_auth", "exposed_dashboard")
+                    else "high"
+                )
 
                 discovered.append(
                     AdminPanel(
@@ -327,7 +352,9 @@ async def audit_admin_panels(
                 Finding(
                     id=f"admin-login-{finding_type}-{b.payload[:16]}",
                     type=finding_type,
-                    severity="high" if b.confidence in ("confirmed", "high") else "medium",
+                    severity="high"
+                    if b.confidence in ("confirmed", "high")
+                    else "medium",
                     location=f"{url} ({b.param})",
                     evidence=b.evidence,
                     suggestion=b.suggestion,

@@ -30,9 +30,7 @@ def run(args, cwd, json_only=True):
 
 
 def _req(url="http://app.test/next", param="url", value="/dashboard"):
-    return Request(
-        method="GET", url=url, params=[NameValue(name=param, value=value)]
-    )
+    return Request(method="GET", url=url, params=[NameValue(name=param, value=value)])
 
 
 # ------------------------------------------------------------------ Unit Tests
@@ -90,7 +88,7 @@ def test_redirect_meta_refresh_high(monkeypatch):
         if CANARY_HOST in val:
             body = (
                 '<html><head><meta http-equiv="refresh" content="0; url='
-                f"{val}\"></head><body></body></html>"
+                f'{val}"></head><body></body></html>'
             )
             return Response(status_code=200, body=body, body_len=len(body))
         return Response(status_code=200, body="ok", body_len=2)
@@ -121,7 +119,9 @@ def test_redirect_js_location_medium(monkeypatch):
 
 def test_redirect_non_candidate_param_skipped():
     req = Request(
-        method="GET", url="http://app.test/debug", params=[NameValue(name="enabled", value="true")]
+        method="GET",
+        url="http://app.test/debug",
+        params=[NameValue(name="enabled", value="true")],
     )
     result = scan_redirect(req)
     assert result.tested_params == []
@@ -185,7 +185,9 @@ def test_redirect_form_param(monkeypatch):
     req = Request(
         method="POST",
         url="http://app.test/login",
-        headers=[NameValue(name="Content-Type", value="application/x-www-form-urlencoded")],
+        headers=[
+            NameValue(name="Content-Type", value="application/x-www-form-urlencoded")
+        ],
         body_type=BodyType.FORM,
         body_form=[NameValue(name="returnTo", value="/home")],
     )
@@ -197,7 +199,11 @@ def test_redirect_form_param(monkeypatch):
 
 # ------------------------------------------------------------------ Integration Tests (fixture app)
 def test_scan_redirect_finds_open_redirect(app):
-    req = Request(method="GET", url=f"{app}/redirect", params=[NameValue(name="url", value="/login")])
+    req = Request(
+        method="GET",
+        url=f"{app}/redirect",
+        params=[NameValue(name="url", value="/login")],
+    )
     result = scan_redirect(req)
     assert len(result.findings) == 1
     f = result.findings[0]
@@ -209,14 +215,20 @@ def test_scan_redirect_safe_relative_redirect_clean(app):
     """The fixture only redirects off-site when the payload is absolute —
     but our probes ARE absolute, so this endpoint is genuinely vulnerable.
     A safe endpoint must produce nothing."""
-    req = Request(method="GET", url=f"{app}/debug", params=[NameValue(name="enabled", value="true")])
+    req = Request(
+        method="GET",
+        url=f"{app}/debug",
+        params=[NameValue(name="enabled", value="true")],
+    )
     result = scan_redirect(req)
     assert result.findings == []
 
 
 def test_scan_redirect_meta_refresh_endpoint(app):
     req = Request(
-        method="GET", url=f"{app}/meta-refresh", params=[NameValue(name="url", value="/home")]
+        method="GET",
+        url=f"{app}/meta-refresh",
+        params=[NameValue(name="url", value="/home")],
     )
     result = scan_redirect(req)
     assert len(result.findings) == 1
@@ -241,3 +253,51 @@ def test_cli_open_redirect_alias(app, tmp_path):
 def test_cli_redirect_requires_target(tmp_path):
     res = run(["redirect"], tmp_path)
     assert res.returncode != 0
+
+
+def test_redirect_explicit_param_filter_override(monkeypatch):
+    def mock_send(r, session):
+        val = next((p.value for p in r.params if p.name == "my_target"), "")
+        if CANARY_HOST in val:
+            return Response(
+                status_code=302,
+                headers=[NameValue(name="Location", value=val)],
+                body="",
+                body_len=0,
+            )
+        return Response(status_code=200, body="ok", body_len=2)
+
+    monkeypatch.setattr("darco.redirect._send", mock_send)
+    req = Request(
+        method="GET",
+        url="http://app.test/go",
+        params=[NameValue(name="my_target", value="xyz")],
+    )
+    result = scan_redirect(req, param_filter="my_target")
+    assert result.tested_params == ["my_target"]
+    assert len(result.findings) == 1
+    assert result.findings[0].param == "my_target"
+
+
+def test_redirect_candidate_by_url_value(monkeypatch):
+    def mock_send(r, session):
+        val = next((p.value for p in r.params if p.name == "blob"), "")
+        if CANARY_HOST in val:
+            return Response(
+                status_code=302,
+                headers=[NameValue(name="Location", value=val)],
+                body="",
+                body_len=0,
+            )
+        return Response(status_code=200, body="ok", body_len=2)
+
+    monkeypatch.setattr("darco.redirect._send", mock_send)
+    # 'blob' is not in standard redirect hints, but value is '/dashboard/home'
+    req = Request(
+        method="GET",
+        url="http://app.test/nav",
+        params=[NameValue(name="blob", value="/dashboard/home")],
+    )
+    result = scan_redirect(req)
+    assert "blob" in result.tested_params
+    assert len(result.findings) == 1

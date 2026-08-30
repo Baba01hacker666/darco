@@ -120,7 +120,9 @@ def audit_stored_xss(
     try:
         for form in forms:
             if submissions_left <= 0:
-                result.notes.append("submission budget exhausted; remaining forms skipped")
+                result.notes.append(
+                    "submission budget exhausted; remaining forms skipped"
+                )
                 break
             if form.captcha:
                 result.notes.append(f"skipped captcha-protected form {form.action}")
@@ -192,7 +194,6 @@ def _verify(
 ) -> tuple[StoredXssFinding | None, str]:
     """Check render candidates for the stored canary. Returns (finding, render_url)."""
     seen: set[str] = set()
-    status = 0
     for url in urls:
         if not url or url in seen:
             continue
@@ -201,7 +202,6 @@ def _verify(
             resp = client.get(url, headers={"User-Agent": USER_AGENT})
         except (httpx.HTTPError, OSError):
             continue
-        status = resp.status_code
         body = resp.text or ""
         low = body.lower()
 
@@ -241,9 +241,9 @@ def _verify(
         # Only report as potential if the payload's quotes also render raw
         # (immediately after the canary), i.e. encoding is partial.
         cpos = low.find(text_canary.lower())
-        if cpos != -1 and body[cpos + len(text_canary) : cpos + len(text_canary) + 3].startswith(
-            ("'", '"')
-        ):
+        if cpos != -1 and body[
+            cpos + len(text_canary) : cpos + len(text_canary) + 3
+        ].startswith(("'", '"')):
             return (
                 StoredXssFinding(
                     param="",

@@ -8,14 +8,12 @@ import click
 
 from ..configfile import DarcoConfig
 from ..errors import DarcoError
-
 from ._group import cli
 from ._oneshot import (
     _engine_execute,
     _resolve_base_request,
 )
 from ._output import _emit
-
 
 
 @cli.command("fuzz")

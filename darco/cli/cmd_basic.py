@@ -10,12 +10,10 @@ from .. import __version__
 from ..errors import DarcoError
 from ..models import NameValue, SessionState, to_json
 from ..workspace import Workspace
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._output import _emit
 from ._rawio import _raw_request, _raw_response
-
 
 
 @cli.command("version")
@@ -131,6 +129,7 @@ def init_cmd(
         ctx, {"status": "created", "workspace": str(ws.path), "target": target}, md_init
     )
 
+
 # ------------------------------------------------------------------ status / session / export
 @cli.command("status")
 @click.pass_context
@@ -190,6 +189,7 @@ def export_cmd(ctx, record_id, raw, want_response):
         click.echo(_raw_response(record.response))
         return
     _emit(ctx, to_json(record), md_record)
+
 
 # ------------------------------------------------------------------ findings
 @cli.group("findings")

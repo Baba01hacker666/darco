@@ -240,9 +240,7 @@ def test_fuzz_run_baseline_session_cookie_rotation_not_flagged(monkeypatch):
     monkeypatch.setattr("darco.fuzz.execute", fake_execute)
     result = run_fuzz(req, SessionState())
     assert result["total_variants"] >= 1
-    assert not any(
-        a.get("anomaly") == "new_auth_cookie" for a in result["results"]
-    )
+    assert not any(a.get("anomaly") == "new_auth_cookie" for a in result["results"])
 
 
 def test_fuzz_classify_new_auth_token_cookie():

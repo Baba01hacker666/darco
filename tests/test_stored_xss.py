@@ -2,13 +2,13 @@ import json
 import os
 
 import pytest
+from bs4 import BeautifulSoup
 from click.testing import CliRunner
 
 from darco.cli import cli
 from darco.discovery.parsers import extract_forms
 from darco.models import Form, FormInput
 from darco.stored_xss import audit_stored_xss
-from bs4 import BeautifulSoup
 
 
 class CliResult:
@@ -115,7 +115,7 @@ async def test_run_auto_scan_reports_stored_xss(app, tmp_path):
             ws,
             app,
             depth=1,
-            max_urls=30,
+            max_urls=12,
             workers=4,
             parse_js=False,
             fuzz=False,

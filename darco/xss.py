@@ -173,9 +173,7 @@ def scan_xss(
 
             # The characters before the tag are the injected quotes & brackets ('">)
             prefix_window = (
-                reflected_segment[:tag_pos]
-                if tag_pos != -1
-                else reflected_segment[:30]
+                reflected_segment[:tag_pos] if tag_pos != -1 else reflected_segment[:30]
             )
             prefix_lower = prefix_window.lower()
 

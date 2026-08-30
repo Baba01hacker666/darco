@@ -448,3 +448,15 @@ def to_json(model: BaseModel) -> dict[str, Any]:
     import json
 
     return json.loads(model.json())
+
+
+# Rebuild models that have forward references in annotations
+SiteMap.model_rebuild()
+AdminPanel.model_rebuild()
+AutoScanReport.model_rebuild()
+JsAnalysisReport.model_rebuild()
+PassiveReport.model_rebuild()
+UploadAuditResult.model_rebuild()
+RedirectScanResult.model_rebuild()
+TraversalScanResult.model_rebuild()
+StoredXssAuditResult.model_rebuild()

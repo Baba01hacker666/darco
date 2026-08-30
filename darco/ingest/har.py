@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit
 
 from ..errors import DarcoError
 from ..models import BodyType, Cookie, NameValue, Request
@@ -37,7 +38,9 @@ def parse_har(text_or_path: str | Path, *, source: str = "har") -> list[Request]
 
 def _request_from_har(req: dict, *, source: str) -> Request:
     method = req.get("method", "GET").upper()
-    url = req.get("url", "").split("?", 1)[0]
+    raw_url = req.get("url", "")
+    split = urlsplit(raw_url)
+    clean_url = raw_url.split("?", 1)[0] if split.query else raw_url
     headers = [
         NameValue(name=h.get("name", ""), value=h.get("value", ""))
         for h in req.get("headers", [])
@@ -47,17 +50,26 @@ def _request_from_har(req: dict, *, source: str) -> Request:
         Cookie(name=c.get("name", ""), value=c.get("value", ""))
         for c in req.get("cookies", [])
     ]
-    params = [
-        NameValue(name=q.get("name", ""), value=q.get("value", ""))
-        for q in req.get("queryString", [])
-    ]
+    query_entries = req.get("queryString", [])
+    if query_entries:
+        params = [
+            NameValue(name=q.get("name", ""), value=q.get("value", ""))
+            for q in query_entries
+        ]
+    elif split.query:
+        params = [
+            NameValue(name=k, value=v)
+            for k, v in parse_qsl(split.query, keep_blank_values=True)
+        ]
+    else:
+        params = []
 
     body_type = BodyType.NONE
     body_json = None
     body_form: list[NameValue] = []
     body_raw = ""
     post = req.get("postData")
-    if post and post.get("text"):
+    if post and (post.get("text") or post.get("params")):
         mime = (post.get("mimeType") or "").lower()
         text = post.get("text", "")
         if "json" in mime:
@@ -68,10 +80,17 @@ def _request_from_har(req: dict, *, source: str) -> Request:
                 body_raw = text
                 body_type = BodyType.RAW
         elif "x-www-form-urlencoded" in mime:
-            body_form = [
-                NameValue(name=p.get("name", ""), value=p.get("value", ""))
-                for p in post.get("params", [])
-            ]
+            params_list = post.get("params", [])
+            if params_list:
+                body_form = [
+                    NameValue(name=p.get("name", ""), value=p.get("value", ""))
+                    for p in params_list
+                ]
+            elif text:
+                body_form = [
+                    NameValue(name=k, value=v)
+                    for k, v in parse_qsl(text, keep_blank_values=True)
+                ]
             body_type = BodyType.FORM
         else:
             body_raw = text
@@ -79,7 +98,7 @@ def _request_from_har(req: dict, *, source: str) -> Request:
 
     return Request(
         method=method,
-        url=url,
+        url=clean_url,
         headers=headers,
         cookies=cookies,
         params=params,

@@ -6,9 +6,6 @@ import json
 
 import click
 
-
-
-
 # Default output format for human-facing commands. Agents/tests pass
 # `--format json` (or `-J`) to get the machine contract.
 DEFAULT_FMT = "md"
@@ -27,6 +24,7 @@ _FORMAT_CMDS = {
     "findings",
     "discover",
 }
+
 
 def _echo_json(data) -> None:
     click.echo(json.dumps(data, indent=2, ensure_ascii=False))
@@ -71,9 +69,7 @@ def _table_from_list(items: list[dict], indent: str = "") -> list[str]:
             if key not in headers:
                 headers.append(key)
     rows = [[_cell(item.get(h, ""), _CELL_MAX) for h in headers] for item in items]
-    widths = [
-        max([len(h)] + [len(r[i]) for r in rows]) for i, h in enumerate(headers)
-    ]
+    widths = [max([len(h)] + [len(r[i]) for r in rows]) for i, h in enumerate(headers)]
     pad = "  "
     lines = [
         indent + pad.join(h.ljust(widths[i]) for i, h in enumerate(headers)),

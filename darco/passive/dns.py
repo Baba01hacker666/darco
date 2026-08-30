@@ -114,9 +114,7 @@ async def enumerate_dns(
         if not any(r.record_type == "A" for r in records):
             try:
                 async with asyncio.timeout(SOCKET_FALLBACK_TIMEOUT):
-                    _, _, ips = await asyncio.to_thread(
-                        socket.gethostbyname_ex, domain
-                    )
+                    _, _, ips = await asyncio.to_thread(socket.gethostbyname_ex, domain)
                 for ip in ips:
                     records.append(DnsRecord(record_type="A", name=domain, value=ip))
             except (socket.gaierror, TimeoutError):

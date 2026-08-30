@@ -4,7 +4,7 @@ from urllib.parse import parse_qsl
 import httpx
 
 from .discovery.crawler import discover
-from .fuzz import run_fuzz
+from .fuzz_v2 import run_fuzz
 from .models import (
     AutoScanReport,
     BodyType,
@@ -167,24 +167,39 @@ async def run_auto_scan(
         if fuzz and (req.params or req.body_form or req.body_json):
             try:
                 fuzz_res = run_fuzz(
-                    req, session, include_state_fields=include_state_fields
+                    req,
+                    session,
+                    include_state_fields=include_state_fields,
+                    concurrency=12,
                 )
                 for anom in fuzz_res.get("results", []):
                     anom["target_url"] = req.url
                     anom["method"] = req.method
                     report.anomalies.append(anom)
-                    if anom.get("anomaly") in (
-                        "error_leak",
-                        "status_change",
-                        "new_auth_cookie",
+                    anom_list = anom.get("anomalies") or (
+                        [anom.get("anomaly")] if anom.get("anomaly") else []
+                    )
+                    primary_anom = anom.get("anomaly") or (
+                        anom_list[0] if anom_list else "unknown"
+                    )
+                    if any(
+                        a
+                        in (
+                            "error_leak",
+                            "status_change",
+                            "new_auth_cookie",
+                            "sql_error",
+                        )
+                        for a in anom_list
                     ):
+                        is_high = any(
+                            a in ("error_leak", "sql_error") for a in anom_list
+                        )
                         all_new_findings.append(
                             Finding(
                                 id=f"fuzz-{req.method}-{anom.get('label')}",
-                                type=f"fuzz_{anom.get('anomaly')}",
-                                severity="medium"
-                                if anom.get("anomaly") != "error_leak"
-                                else "high",
+                                type=f"fuzz_{primary_anom}",
+                                severity="high" if is_high else "medium",
                                 location=f"{req.method} {req.url} ({anom.get('label')})",
                                 evidence=anom.get("detail", ""),
                                 suggestion="Validate parameter inputs and handle exceptions gracefully.",
@@ -342,6 +357,7 @@ async def run_auto_scan(
             url,
             timeout=timeout,
             verify=verify,
+            workers=workers,
         )
         report.admin_panels = admin_panels
         for ap in admin_panels:
@@ -370,8 +386,14 @@ async def run_auto_scan(
 
         admin_login_forms = [p.login_form for p in admin_panels if p.login_form]
         if (sqli or default_creds) and admin_login_forms:
-            existing_actions = {f.action for f in login_forms} if "login_forms" in locals() and login_forms else set()
-            new_admin_forms = [f for f in admin_login_forms if f.action not in existing_actions]
+            existing_actions = (
+                {f.action for f in login_forms}
+                if "login_forms" in locals() and login_forms
+                else set()
+            )
+            new_admin_forms = [
+                f for f in admin_login_forms if f.action not in existing_actions
+            ]
             if new_admin_forms:
                 try:
                     admin_res = audit_login_forms(

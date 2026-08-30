@@ -22,10 +22,8 @@ API is used over httpx for history. Failures degrade gracefully.
 """
 
 import asyncio
-import json
 import subprocess
 from dataclasses import dataclass, field
-from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -34,25 +32,101 @@ from .errors import DarcoError
 
 # Common subdomains worth probing for an origin leak. Kept lean on purpose.
 SUBDOMAIN_WORDLIST = [
-    "www", "api", "app", "dev", "stage", "staging", "test", "beta",
-    "admin", "portal", "cp", "cpanel", "direct", "origin", "ori",
-    "backend", "internal", "int", "vpn", "mail", "webmail", "smtp",
-    "ftp", "ssh", "git", "ci", "jenkins", "db", "mysql", "pgsql",
-    "legacy", "old", "new", "m", "mobile", "shop", "store", "secure",
-    "login", "auth", "sso", "v1", "v2", "cdn", "static", "assets",
-    "images", "img", "media", "files", "ns1", "ns2", "dns", "mx",
-    "lb", "loadbalancer", "node", "srv", "server", "host", "panel",
+    "www",
+    "api",
+    "app",
+    "dev",
+    "stage",
+    "staging",
+    "test",
+    "beta",
+    "admin",
+    "portal",
+    "cp",
+    "cpanel",
+    "direct",
+    "origin",
+    "ori",
+    "backend",
+    "internal",
+    "int",
+    "vpn",
+    "mail",
+    "webmail",
+    "smtp",
+    "ftp",
+    "ssh",
+    "git",
+    "ci",
+    "jenkins",
+    "db",
+    "mysql",
+    "pgsql",
+    "legacy",
+    "old",
+    "new",
+    "m",
+    "mobile",
+    "shop",
+    "store",
+    "secure",
+    "login",
+    "auth",
+    "sso",
+    "v1",
+    "v2",
+    "cdn",
+    "static",
+    "assets",
+    "images",
+    "img",
+    "media",
+    "files",
+    "ns1",
+    "ns2",
+    "dns",
+    "mx",
+    "lb",
+    "loadbalancer",
+    "node",
+    "srv",
+    "server",
+    "host",
+    "panel",
 ]
 
 # CDN / WAF vendor edge host fragments — a subdomain whose CNAME ends in one of
 # these is CDN-fronted (not an origin leak); one that does not is suspicious.
 CDN_CNAME_FRAGMENTS = (
-    "cloudflare", "akamai", "fastly", "cloudfront", "azureedge",
-    "azurefd", "trafficmanager", "edgekey", "akadns", "edgesuite",
-    "incapdns", "sucuri", "stackpath", "sucuri.net", "fwu.rs",
-    "google", "googlehosted", "lscache", "bitgravity", "limelight",
-    "level3", "cdn", ".herokuapp.com", ".amazonaws.com", ".azurewebsites",
-    ".netlify", ".pages.dev", ".vercel", ".fly.dev",
+    "cloudflare",
+    "akamai",
+    "fastly",
+    "cloudfront",
+    "azureedge",
+    "azurefd",
+    "trafficmanager",
+    "edgekey",
+    "akadns",
+    "edgesuite",
+    "incapdns",
+    "sucuri",
+    "stackpath",
+    "sucuri.net",
+    "fwu.rs",
+    "google",
+    "googlehosted",
+    "lscache",
+    "bitgravity",
+    "limelight",
+    "level3",
+    "cdn",
+    ".herokuapp.com",
+    ".amazonaws.com",
+    ".azurewebsites",
+    ".netlify",
+    ".pages.dev",
+    ".vercel",
+    ".fly.dev",
 )
 
 
@@ -60,8 +134,8 @@ CDN_CNAME_FRAGMENTS = (
 class HostRecord:
     host: str
     ips: list[str] = field(default_factory=list)
-    cname: Optional[str] = None
-    source: str = ""          # wordlist | history | cname-chain | direct
+    cname: str | None = None
+    source: str = ""  # wordlist | history | cname-chain | direct
     likely_origin: bool = False
     note: str = ""
 
@@ -105,6 +179,7 @@ def _dig(records: str, host: str, resolver: str = "8.8.8.8") -> list[str]:
             capture_output=True,
             text=True,
             timeout=8,
+            check=False,
         )
     except (subprocess.SubprocessError, FileNotFoundError):
         return []
@@ -112,6 +187,7 @@ def _dig(records: str, host: str, resolver: str = "8.8.8.8") -> list[str]:
     # +short returns the CNAME first, then the A record(s); for A/AAAA we only
     # want IP addresses (CNAME lines contain letters/dots but not a clean IP).
     import re
+
     ip_re = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$|^[0-9a-f:]+$")
     if records in ("A", "AAAA"):
         return [l.rstrip(".") for l in lines if ip_re.match(l)]
@@ -120,7 +196,7 @@ def _dig(records: str, host: str, resolver: str = "8.8.8.8") -> list[str]:
 
 def _root_domain(host: str) -> str:
     host = host.strip().lower()
-    if host.startswith("http://") or host.startswith("https://"):
+    if host.startswith(("http://", "https://")):
         host = urlparse(host).hostname or host
     return host
 
@@ -134,8 +210,8 @@ def _is_cdn_cname(cname: str) -> bool:
 def _enumerate_wordlist(domain: str, concurrency: int = 20) -> list[HostRecord]:
     hosts = [f"{s}.{domain}" for s in SUBDOMAIN_WORDLIST]
 
-    async def resolve_one(h: str) -> Optional[HostRecord]:
-        loop = asyncio.get_event_loop()
+    async def resolve_one(h: str) -> HostRecord | None:
+        loop = asyncio.get_running_loop()
         a = await loop.run_in_executor(None, lambda: _dig("A", h))
         if not a:
             return None
@@ -156,6 +232,17 @@ def _enumerate_wordlist(domain: str, concurrency: int = 20) -> list[HostRecord]:
         tasks = [resolve_one(h) for h in hosts]
         results = await asyncio.gather(*tasks)
         return [r for r in results if r]
+
+    try:
+        cur_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        cur_loop = None
+
+    if cur_loop and cur_loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, run()).result()
 
     return asyncio.run(run())
 
@@ -185,7 +272,7 @@ def _dns_history(domain: str) -> list[dict]:
 
 
 # ------------------------------------------------------------------ CNAME chain follow
-def _follow_cname(host: str, depth: int = 4) -> tuple[list[str], Optional[str]]:
+def _follow_cname(host: str, depth: int = 4) -> tuple[list[str], str | None]:
     """Follow CNAME records; return (resolved_ips, final_cname)."""
     seen = set()
     current = host
@@ -204,7 +291,9 @@ def _follow_cname(host: str, depth: int = 4) -> tuple[list[str], Optional[str]]:
 
 
 # ------------------------------------------------------------------ public entry
-def find_origin(domain: str, *, enum_subdomains: bool = True, use_history: bool = True) -> OriginReport:
+def find_origin(
+    domain: str, *, enum_subdomains: bool = True, use_history: bool = True
+) -> OriginReport:
     """Discover the origin IP(s) behind a CDN/WAF for `domain`."""
     domain = _root_domain(domain)
     if not domain:
@@ -235,9 +324,7 @@ def find_origin(domain: str, *, enum_subdomains: bool = True, use_history: bool 
                 if ip not in existing.ips:
                     existing.ips.append(ip)
             else:
-                report.hosts.append(
-                    HostRecord(host=host, ips=[ip], source="history")
-                )
+                report.hosts.append(HostRecord(host=host, ips=[ip], source="history"))
 
     # 3) wordlist subdomain enumeration
     if enum_subdomains:
@@ -249,7 +336,7 @@ def find_origin(domain: str, *, enum_subdomains: bool = True, use_history: bool 
     #    non-CDN terminal A record (the origin).
     for rec in list(report.hosts):
         if rec.cname and not _is_cdn_cname(rec.cname):
-            ips, final = _follow_cname(rec.cname)
+            ips, _final = _follow_cname(rec.cname)
             if ips:
                 rec.ips = sorted(set(rec.ips + ips))
                 rec.likely_origin = True

@@ -40,7 +40,6 @@ import httpx
 from ..errors import DarcoError
 from .models import TemplateExtractor, TemplateMatcher
 
-
 # --------------------------------------------------------------------- registry
 
 _MATCHER_TYPES: dict[str, dict] = {}
@@ -103,6 +102,7 @@ def registered_extractor_types() -> dict[str, dict]:
 
 # ------------------------------------------------------------------ xml helpers
 
+
 def _xml_root(resp: httpx.Response):
     """Parse the body; returns an Element or None on malformed XML.
 
@@ -124,12 +124,15 @@ def _findall(root, expr: str):
 
 # ------------------------------------------------------- bundled custom matchers
 
+
 @register_matcher_type(
     "binary",
     source="darco",
     description="Hex-encoded byte patterns matched against the raw response",
 )
-def _match_binary(matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: float = 0.0):
+def _match_binary(
+    matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: float = 0.0
+):
     target = matcher.part if matcher.part == "header" else ""
     raw = (
         ("\r\n".join(f"{k}: {v}" for k, v in resp.headers.items())).encode("utf-8")
@@ -156,7 +159,9 @@ def _match_binary(matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: fl
     source="darco",
     description="XPath expressions evaluated against an XML response body",
 )
-def _match_xpath(matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: float = 0.0):
+def _match_xpath(
+    matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: float = 0.0
+):
     root = _xml_root(resp)
     if root is None:
         return False, []
@@ -181,7 +186,9 @@ def _match_xpath(matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: flo
     source="darco",
     description="JSON key paths (dot notation); entries may pin values with path=value",
 )
-def _match_json(matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: float = 0.0):
+def _match_json(
+    matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: float = 0.0
+):
     try:
         data = resp.json()
     except ValueError:
@@ -221,6 +228,7 @@ def _match_json(matcher: TemplateMatcher, resp: httpx.Response, elapsed_ms: floa
 
 
 # ------------------------------------------------------ bundled custom extractors
+
 
 @register_extractor_type(
     "xpath",

@@ -8,11 +8,9 @@ import click
 
 from ..errors import DarcoError
 from ..models import to_json
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ template / attack templates
@@ -128,7 +126,9 @@ def template_run_cmd(
             p = Path(t_path)
             if p.is_dir():
                 all_templates.extend(
-                    load_templates_from_dir(p, tags=list(tags_opt), severities=list(sev_opt))
+                    load_templates_from_dir(
+                        p, tags=list(tags_opt), severities=list(sev_opt)
+                    )
                 )
             elif p.is_file():
                 all_templates.append(load_template(p))
@@ -182,7 +182,9 @@ def template_list_cmd(ctx, dir_path, tags_opt, sev_opt):
             dir_path, tags=list(tags_opt), severities=list(sev_opt)
         )
     else:
-        templates = load_builtin_templates(tags=list(tags_opt), severities=list(sev_opt))
+        templates = load_builtin_templates(
+            tags=list(tags_opt), severities=list(sev_opt)
+        )
 
     summary = [
         {
@@ -217,12 +219,21 @@ def template_list_cmd(ctx, dir_path, tags_opt, sev_opt):
     "-s",
     "--severity",
     default="medium",
-    type=click.Choice(["info", "low", "medium", "high", "critical"], case_sensitive=False),
+    type=click.Choice(
+        ["info", "low", "medium", "high", "critical"], case_sensitive=False
+    ),
 )
 @click.option("-m", "--method", default="GET", help="HTTP Method (GET, POST, etc.)")
 @click.option("-p", "--path", default="{{BaseURL}}/", help="Target request path")
 @click.option("-w", "--word", "words", multiple=True, help="Words to match in response")
-@click.option("-c", "--status", "status_codes", multiple=True, type=int, help="Status codes to match")
+@click.option(
+    "-c",
+    "--status",
+    "status_codes",
+    multiple=True,
+    type=int,
+    help="Status codes to match",
+)
 @click.option("-o", "--out", "out_file", default="", help="Output YAML file path")
 @click.pass_context
 def template_new_cmd(
@@ -255,7 +266,9 @@ def template_new_cmd(
         _emit(
             ctx,
             {"status": "created", "file": str(p), "id": template_id},
-            lambda d: f"# Template Created\n\n- **ID**: `{d.get('id')}`\n- **File**: `{d.get('file')}`\n",
+            lambda d: (
+                f"# Template Created\n\n- **ID**: `{d.get('id')}`\n- **File**: `{d.get('file')}`\n"
+            ),
         )
     else:
         click.echo(yaml_content)

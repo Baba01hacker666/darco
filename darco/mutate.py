@@ -154,6 +154,13 @@ def apply_mutations(request: Request, ops: list[Mutation]) -> tuple[Request, lis
                 return p
         return None
 
+    def find_json_key(name: str) -> str | None:
+        if req.body_type == BodyType.JSON and isinstance(req.body_json, dict):
+            for k in req.body_json:
+                if k.lower() == name.lower():
+                    return k
+        return None
+
     for op in ops:
         if op.op == "set_header":
             found = False
@@ -170,13 +177,32 @@ def apply_mutations(request: Request, ops: list[Mutation]) -> tuple[Request, lis
         elif op.op == "set_param":
             found = find_param(op.name)
             form = find_form(op.name)
+            jkey = find_json_key(op.name)
             if found:
                 found.value = op.value
             if form:
                 form.value = op.value
-            if not found and not form:
+            if jkey is not None and isinstance(req.body_json, dict):
+                orig_val = req.body_json[jkey]
+                if isinstance(orig_val, bool):
+                    req.body_json[jkey] = op.value.lower() in ("true", "1", "yes")
+                elif isinstance(orig_val, int) and not isinstance(orig_val, bool):
+                    try:
+                        req.body_json[jkey] = int(op.value)
+                    except ValueError:
+                        req.body_json[jkey] = op.value
+                elif isinstance(orig_val, float):
+                    try:
+                        req.body_json[jkey] = float(op.value)
+                    except ValueError:
+                        req.body_json[jkey] = op.value
+                else:
+                    req.body_json[jkey] = op.value
+            if not found and not form and jkey is None:
                 if req.body_type == BodyType.FORM:
                     req.body_form.append(NameValue(name=op.name, value=op.value))
+                elif req.body_type == BodyType.JSON and isinstance(req.body_json, dict):
+                    req.body_json[op.name] = op.value
                 else:
                     req.params.append(NameValue(name=op.name, value=op.value))
             descriptions.append(op.describe())
@@ -185,11 +211,16 @@ def apply_mutations(request: Request, ops: list[Mutation]) -> tuple[Request, lis
             req.body_form = [
                 p for p in req.body_form if p.name.lower() != op.name.lower()
             ]
+            if req.body_type == BodyType.JSON and isinstance(req.body_json, dict):
+                keys_to_del = [k for k in req.body_json if k.lower() == op.name.lower()]
+                for k in keys_to_del:
+                    del req.body_json[k]
             descriptions.append(op.describe())
         elif op.op == "flip_param":
             p = find_param(op.name)
             form = find_form(op.name)
-            if p is None and form is None:
+            jkey = find_json_key(op.name)
+            if p is None and form is None and jkey is None:
                 raise DarcoError(
                     f"cannot flip param {op.name!r}: not present in request"
                 )
@@ -197,9 +228,34 @@ def apply_mutations(request: Request, ops: list[Mutation]) -> tuple[Request, lis
                 p.value = flip_value(p.value)
             if form is not None:
                 form.value = flip_value(form.value)
+            if jkey is not None and isinstance(req.body_json, dict):
+                cur_val = req.body_json[jkey]
+                if isinstance(cur_val, bool):
+                    req.body_json[jkey] = not cur_val
+                elif str(cur_val).isdigit():
+                    req.body_json[jkey] = 0 if int(cur_val) != 0 else 1
+                else:
+                    flipped_str = flip_value(str(cur_val))
+                    if flipped_str.lower() in ("true", "false"):
+                        req.body_json[jkey] = flipped_str.lower() == "true"
+                    else:
+                        req.body_json[jkey] = flipped_str
             descriptions.append(op.describe())
         elif op.op == "strip_session":
             req.session_stripped = True
+            req.cookies = []
+            req.headers = [
+                h
+                for h in req.headers
+                if h.name.lower()
+                not in {
+                    "authorization",
+                    "cookie",
+                    "proxy-authorization",
+                    "x-api-key",
+                    "x-auth-token",
+                }
+            ]
             descriptions.append(op.describe())
         elif op.op == "set_body":
             value = op.value

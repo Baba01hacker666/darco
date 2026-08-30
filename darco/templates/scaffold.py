@@ -34,7 +34,9 @@ def generate_template_scaffold(
             {
                 "method": method.upper(),
                 "path": [path],
-                "matchers-condition": "and" if (status_codes and (words or regex_patterns)) else "or",
+                "matchers-condition": "and"
+                if (status_codes and (words or regex_patterns))
+                else "or",
                 "matchers": [],
             }
         ],
@@ -43,29 +45,37 @@ def generate_template_scaffold(
     req_matchers = data["requests"][0]["matchers"]
 
     if status_codes:
-        req_matchers.append({
-            "type": "status",
-            "status": status_codes,
-        })
+        req_matchers.append(
+            {
+                "type": "status",
+                "status": status_codes,
+            }
+        )
     else:
-        req_matchers.append({
-            "type": "status",
-            "status": [200],
-        })
+        req_matchers.append(
+            {
+                "type": "status",
+                "status": [200],
+            }
+        )
 
     if words:
-        req_matchers.append({
-            "type": "word",
-            "part": "body",
-            "words": words,
-        })
+        req_matchers.append(
+            {
+                "type": "word",
+                "part": "body",
+                "words": words,
+            }
+        )
 
     if regex_patterns:
-        req_matchers.append({
-            "type": "regex",
-            "part": "body",
-            "regex": regex_patterns,
-        })
+        req_matchers.append(
+            {
+                "type": "regex",
+                "part": "body",
+                "regex": regex_patterns,
+            }
+        )
 
     header_comment = """# ------------------------------------------------------------------
 # Darco Security / Attack Template

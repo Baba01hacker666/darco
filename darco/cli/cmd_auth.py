@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-
 import click
 
 from ..errors import DarcoError
 from ..models import to_json
-
-from ._group import cli
 from ._context import _find_workspace, _one_shot_session
+from ._group import cli
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ login finder & SQLi bypass audit
@@ -23,8 +20,12 @@ from ._output import _emit
     is_flag=True,
     help="Only find login forms — skip the SQLi bypass audit",
 )
-@click.option("--username", "user_field", default=None, help="Force username field name")
-@click.option("--password", "pass_field", default=None, help="Force password field name")
+@click.option(
+    "--username", "user_field", default=None, help="Force username field name"
+)
+@click.option(
+    "--password", "pass_field", default=None, help="Force password field name"
+)
 @click.option(
     "--payload",
     "extra_payloads",
@@ -121,7 +122,9 @@ def login_cmd(
                 Finding(
                     id=f"login-{ftype}-{b.payload[:16]}",
                     type=ftype,
-                    severity="high" if b.confidence in ("confirmed", "high") else "medium",
+                    severity="high"
+                    if b.confidence in ("confirmed", "high")
+                    else "medium",
                     location=f"{result.target} ({b.param})",
                     evidence=b.evidence,
                     suggestion=b.suggestion,
@@ -198,6 +201,7 @@ def auth_cmd(
     multiple=True,
     help="Target email address to test in smart credentials (repeatable)",
 )
+@click.option("--paths", default=None, help="Comma-separated custom paths to probe")
 @click.option("--workers", type=int, default=10, help="Concurrent probe workers")
 @click.option("--save", is_flag=True, help="Save findings to workspace findings.json")
 @click.option(
@@ -209,6 +213,7 @@ def admin_cmd(
     ctx,
     target,
     url,
+    paths,
     default_creds,
     emails,
     workers,
@@ -250,6 +255,8 @@ def admin_cmd(
             except (DarcoError, OSError, ValueError):
                 pass
 
+    custom_paths = [p.strip() for p in paths.split(",") if p.strip()] if paths else None
+
     report = audit_admin_panels_sync(
         target_val,
         emails=combined_emails,
@@ -257,6 +264,7 @@ def admin_cmd(
         timeout=timeout,
         verify=not insecure,
         workers=workers,
+        paths=custom_paths,
     )
 
     if save and report.findings:
@@ -269,12 +277,18 @@ def admin_cmd(
 @cli.command("admin-finder")
 @click.argument("target", required=False, default=None)
 @click.option("-u", "--url", default=None, help="Target URL or root domain")
+@click.option("--paths", default=None, help="Comma-separated custom paths to probe")
 @click.option(
     "--default-creds/--no-default-creds",
     default=True,
     help="Probe discovered admin login forms with smart credentials",
 )
-@click.option("--email", "emails", multiple=True, help="Target email address to test in credentials")
+@click.option(
+    "--email",
+    "emails",
+    multiple=True,
+    help="Target email address to test in credentials",
+)
 @click.option("--workers", type=int, default=10)
 @click.option("--save", is_flag=True)
 @click.option("--insecure", is_flag=True, default=False)
@@ -284,6 +298,7 @@ def admin_finder_cmd(
     ctx,
     target,
     url,
+    paths,
     default_creds,
     emails,
     workers,
@@ -296,6 +311,7 @@ def admin_finder_cmd(
         admin_cmd,
         target=target,
         url=url,
+        paths=paths,
         default_creds=default_creds,
         emails=emails,
         workers=workers,

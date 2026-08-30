@@ -94,7 +94,13 @@ def extract_forms(soup: BeautifulSoup, base_url: str) -> list[Form]:
                 )
         captcha = _is_captcha(str(form))
         forms.append(
-            Form(action=action, method=method, inputs=inputs, captcha=captcha, url=base_url)
+            Form(
+                action=action,
+                method=method,
+                inputs=inputs,
+                captcha=captcha,
+                url=base_url,
+            )
         )
     return forms
 
@@ -105,17 +111,41 @@ def is_html(content_type: str | None, body: str) -> bool:
     return body.lstrip().startswith("<!doctype") or body.lstrip().startswith("<html")
 
 
-_EMAIL_REGEX = re.compile(
-    r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
-)
+_EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _IGNORED_EMAIL_EXTENSIONS = {
-    "png", "jpg", "jpeg", "gif", "svg", "webp", "css", "js", "woff", "woff2",
-    "ttf", "eot", "ico", "map", "mp4", "mp3", "pdf", "zip", "tar", "gz",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "svg",
+    "webp",
+    "css",
+    "js",
+    "woff",
+    "woff2",
+    "ttf",
+    "eot",
+    "ico",
+    "map",
+    "mp4",
+    "mp3",
+    "pdf",
+    "zip",
+    "tar",
+    "gz",
 }
 _IGNORED_EMAIL_DOMAINS = {
-    "example.com", "example.org", "example.net",
-    "domain.com", "yourcompany.com", "company.com", "email.com", "sample.com",
-    "w3.org", "schema.org", "sentry.io",
+    "example.com",
+    "example.org",
+    "example.net",
+    "domain.com",
+    "yourcompany.com",
+    "company.com",
+    "email.com",
+    "sample.com",
+    "w3.org",
+    "schema.org",
+    "sentry.io",
 }
 
 
@@ -142,7 +172,9 @@ def extract_emails(text_or_soup: str | BeautifulSoup) -> list[str]:
     valid: list[str] = []
     seen: set[str] = set()
     for em in sorted(emails):
-        em_clean = em.strip().rstrip(".,;:!?)'\"<>[]{}").lstrip(".,;:!?'\"<([]{}").lower()
+        em_clean = (
+            em.strip().rstrip(".,;:!?)'\"<>[]{}").lstrip(".,;:!?'\"<([]{}").lower()
+        )
         if not (5 <= len(em_clean) <= 100):
             continue
         if "@" not in em_clean or em_clean.count("@") != 1:
@@ -151,7 +183,10 @@ def extract_emails(text_or_soup: str | BeautifulSoup) -> list[str]:
         if not user or not domain or "." not in domain:
             continue
         ext = domain.rsplit(".", 1)[-1]
-        if ext in _IGNORED_EMAIL_EXTENSIONS or user.rsplit(".", 1)[-1] in _IGNORED_EMAIL_EXTENSIONS:
+        if (
+            ext in _IGNORED_EMAIL_EXTENSIONS
+            or user.rsplit(".", 1)[-1] in _IGNORED_EMAIL_EXTENSIONS
+        ):
             continue
         if domain in _IGNORED_EMAIL_DOMAINS:
             continue

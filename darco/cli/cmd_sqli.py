@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-
 import click
 
 from ..errors import DarcoError
 from ..models import to_json
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._oneshot import (
     _resolve_base_request,
 )
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ sql injection testing
@@ -74,8 +71,21 @@ from ._output import _emit
 )
 @click.pass_context
 def sql_cmd(
-    ctx, target, url, from_id, param, save, include_state, insecure,
-    method, data, cli_header, cli_form, only_plugins, skip_plugins, plugin_dirs,
+    ctx,
+    target,
+    url,
+    from_id,
+    param,
+    save,
+    include_state,
+    insecure,
+    method,
+    data,
+    cli_header,
+    cli_form,
+    only_plugins,
+    skip_plugins,
+    plugin_dirs,
 ):
     """SQL injection testing: syntax break, quote balancing, arithmetic evaluation, and boolean differential."""
     from ..models import Finding
@@ -190,8 +200,21 @@ def sql_cmd(
 @click.option("--plugin-dir", "plugin_dirs", multiple=True)
 @click.pass_context
 def sqli_cmd(
-    ctx, target, url, from_id, param, save, include_state, insecure,
-    method, data, cli_header, cli_form, only_plugins, skip_plugins, plugin_dirs,
+    ctx,
+    target,
+    url,
+    from_id,
+    param,
+    save,
+    include_state,
+    insecure,
+    method,
+    data,
+    cli_header,
+    cli_form,
+    only_plugins,
+    skip_plugins,
+    plugin_dirs,
 ):
     """Alias for SQL injection testing."""
     ctx.invoke(

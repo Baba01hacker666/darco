@@ -220,3 +220,49 @@ def test_cli_table_format_send(app, tmp_path):
     assert res.returncode == 0, res.stderr
     assert "status_code" in res.stdout
     assert "name" in res.stdout  # response headers rendered as a sub-table
+
+
+def test_cli_discover_and_scan_advanced_flags(app, tmp_path):
+    # Test discover with --redirect and --traversal flags
+    res = run(
+        [
+            "discover",
+            app,
+            "--redirect",
+            "--traversal",
+            "--depth",
+            "1",
+            "--max-urls",
+            "2",
+            "--no-js",
+        ],
+        tmp_path,
+    )
+    assert res.returncode == 0, res.stderr
+    data = json.loads(res.stdout)
+    assert "crawled_endpoints" in data
+    assert "findings" in data
+
+    # Test scan with exclusion flags
+    res2 = run(
+        [
+            "scan",
+            app,
+            "--no-fuzz",
+            "--no-sqli",
+            "--no-xss",
+            "--no-upload",
+            "--no-redirect",
+            "--no-traversal",
+            "--no-stored-xss",
+            "--depth",
+            "1",
+            "--max-urls",
+            "2",
+            "--no-js",
+        ],
+        tmp_path,
+    )
+    assert res2.returncode == 0, res2.stderr
+    data2 = json.loads(res2.stdout)
+    assert "endpoints" in data2 or "crawled_endpoints" in data2

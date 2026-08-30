@@ -6,13 +6,10 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
-
 from ..configfile import DarcoConfig
 from ..errors import DarcoError
 from ..models import BodyType, NameValue, Request
 from ._context import _find_workspace, _one_shot_session
-
-
 
 
 # ------------------------------------------------------------------ fuzz (smart default engine)
@@ -61,6 +58,7 @@ def _resolve_base_request(
     base.timeout = base.timeout or wcfg.timeout
     base.verify = not wcfg.insecure
     return base, ws.load_session(), False
+
 
 def _engine_execute(req, session):
     from ..engine import execute

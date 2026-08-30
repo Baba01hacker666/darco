@@ -91,7 +91,9 @@ def generate_smart_credentials(
             raw = "http://" + raw
         host = (urlsplit(raw).hostname or "").lower()
         domain = host.split(":")[0]
-        parts = [p for p in domain.split(".") if p and p not in ("www", "m", "api", "app")]
+        parts = [
+            p for p in domain.split(".") if p and p not in ("www", "m", "api", "app")
+        ]
         if len(parts) >= 2:
             domain_base = parts[-2]
         elif parts:
@@ -218,7 +220,8 @@ def _to_login_form(form, page_url: str) -> LoginForm:
             for i in inputs
             if i.name
             and (
-                i.name.lower() in ("username", "user", "login", "email", "mail", "loginname")
+                i.name.lower()
+                in ("username", "user", "login", "email", "mail", "loginname")
                 or i.type in ("username", "email")
             )
         ),
@@ -258,9 +261,7 @@ def find_login_forms(
         seen: set[tuple[str, str]] = set()
         for page in pages:
             try:
-                resp = client.get(
-                    page, headers={"User-Agent": USER_AGENT}
-                )
+                resp = client.get(page, headers={"User-Agent": USER_AGENT})
             except (httpx.HTTPError, OSError):
                 continue
             if resp.status_code >= 400:
@@ -347,9 +348,11 @@ def _is_login_success(resp, base: dict, client=None) -> tuple[str, str] | None:
     body = (resp.text or "").lower()
 
     # Redirect straight into an account area — the classic bypass signature.
-    if resp.status_code in (301, 302, 303, 307, 308) and any(
-        h in loc for h in _ACCOUNT_REDIRECT_HINTS
-    ) and not any(h in loc for h in ("login", "signin", "error")):
+    if (
+        resp.status_code in (301, 302, 303, 307, 308)
+        and any(h in loc for h in _ACCOUNT_REDIRECT_HINTS)
+        and not any(h in loc for h in ("login", "signin", "error"))
+    ):
         detail = f"redirect to '{loc}'"
         markers = _landing_markers(resp, client)
         if markers:
@@ -401,7 +404,9 @@ def audit_login_forms(
     *,
     target: str = "",
     payloads: tuple[str, ...] | None = None,
-    default_credentials: tuple[tuple[str, str], ...] | list[tuple[str, str]] | None = None,
+    default_credentials: tuple[tuple[str, str], ...]
+    | list[tuple[str, str]]
+    | None = None,
     emails: tuple[str, ...] | list[str] = (),
     test_default_creds: bool = True,
     timeout: float = 10.0,
@@ -430,7 +435,10 @@ def audit_login_forms(
                     if page.status_code < 400:
                         soup = BeautifulSoup(page.text, "html.parser")
                         for f in extract_forms(soup, form.url):
-                            if f.action == form.action and f.method.upper() == form.method:
+                            if (
+                                f.action == form.action
+                                and f.method.upper() == form.method
+                            ):
                                 hidden = {
                                     i.name: i.default or ""
                                     for i in f.inputs
@@ -480,7 +488,10 @@ def audit_login_forms(
                         if field == uname_field
                         else "administrator"
                     )
-                    resp = attempt(payload if field == uname_field else other, payload if field == pwd_field else other)
+                    resp = attempt(
+                        payload if field == uname_field else other,
+                        payload if field == pwd_field else other,
+                    )
                     verdict = _is_login_success(resp, base_sig, client)
                     if not verdict:
                         continue
@@ -491,7 +502,8 @@ def audit_login_forms(
                             payload=payload,
                             confidence=(
                                 "high"
-                                if indicator in ("redirect_to_account", "authenticated_content")
+                                if indicator
+                                in ("redirect_to_account", "authenticated_content")
                                 else "medium"
                             ),
                             success_indicator=indicator,

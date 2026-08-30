@@ -44,9 +44,7 @@ def test_traversal_passwd_confirmed(monkeypatch):
     def mock_send(r, session):
         val = next((p.value for p in r.params if p.name == "file"), "")
         if ".." in val and val.endswith("passwd"):
-            return Response(
-                status_code=200, body=passwd, body_len=len(passwd)
-            )
+            return Response(status_code=200, body=passwd, body_len=len(passwd))
         return Response(status_code=200, body="report.pdf", body_len=10)
 
     monkeypatch.setattr("darco.traversal._send", mock_send)
@@ -94,7 +92,9 @@ def test_traversal_encoded_payload(monkeypatch):
 
 def test_traversal_non_candidate_param_skipped():
     req = Request(
-        method="GET", url="http://app.test/debug", params=[NameValue(name="enabled", value="true")]
+        method="GET",
+        url="http://app.test/debug",
+        params=[NameValue(name="enabled", value="true")],
     )
     result = scan_traversal(req)
     assert result.tested_params == []
@@ -137,7 +137,9 @@ def test_traversal_json_body_param(monkeypatch):
 # ------------------------------------------------------------------ Integration Tests (fixture app)
 def test_scan_traversal_finds_passwd(app):
     req = Request(
-        method="GET", url=f"{app}/file", params=[NameValue(name="path", value="report.pdf")]
+        method="GET",
+        url=f"{app}/file",
+        params=[NameValue(name="path", value="report.pdf")],
     )
     result = scan_traversal(req)
     assert len(result.findings) == 1
@@ -149,7 +151,9 @@ def test_scan_traversal_finds_passwd(app):
 
 def test_scan_traversal_safe_endpoint_clean(app):
     req = Request(
-        method="GET", url=f"{app}/debug", params=[NameValue(name="enabled", value="true")]
+        method="GET",
+        url=f"{app}/debug",
+        params=[NameValue(name="enabled", value="true")],
     )
     result = scan_traversal(req)
     assert result.findings == []
@@ -174,3 +178,45 @@ def test_cli_traversal_alias(app, tmp_path):
 def test_cli_trav_requires_target(tmp_path):
     res = run(["trav"], tmp_path)
     assert res.returncode != 0
+
+
+def test_traversal_explicit_param_filter_override(monkeypatch):
+    passwd = "root:x:0:0:root:/root:/bin/bash\n"
+
+    def mock_send(r, session):
+        val = next((p.value for p in r.params if p.name == "custom_blob"), "")
+        if ".." in val:
+            return Response(status_code=200, body=passwd, body_len=len(passwd))
+        return Response(status_code=200, body="normal", body_len=6)
+
+    monkeypatch.setattr("darco.traversal._send", mock_send)
+    req = Request(
+        method="GET",
+        url="http://app.test/view",
+        params=[NameValue(name="custom_blob", value="data123")],
+    )
+    result = scan_traversal(req, param_filter="custom_blob")
+    assert result.tested_params == ["custom_blob"]
+    assert len(result.findings) == 1
+    assert result.findings[0].param == "custom_blob"
+
+
+def test_traversal_candidate_by_path_value(monkeypatch):
+    passwd = "root:x:0:0:root:/root:/bin/bash\n"
+
+    def mock_send(r, session):
+        val = next((p.value for p in r.params if p.name == "item"), "")
+        if ".." in val:
+            return Response(status_code=200, body=passwd, body_len=len(passwd))
+        return Response(status_code=200, body="normal", body_len=6)
+
+    monkeypatch.setattr("darco.traversal._send", mock_send)
+    # 'item' is not in standard traversal hints, but value is 'images/avatar.png'
+    req = Request(
+        method="GET",
+        url="http://app.test/view",
+        params=[NameValue(name="item", value="images/avatar.png")],
+    )
+    result = scan_traversal(req)
+    assert "item" in result.tested_params
+    assert len(result.findings) == 1

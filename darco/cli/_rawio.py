@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 from urllib.parse import urlencode, urlsplit
 
-
 from ..models import BodyType, NameValue, Request
-
 
 
 # ------------------------------------------------------------------ raw serialization helpers

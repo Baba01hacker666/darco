@@ -40,7 +40,9 @@ def load_template_from_string(content: str, path: str = "") -> AttackTemplate:
         raise DarcoError(f"Failed to parse template YAML/JSON {path}: {e}") from e
 
     if not isinstance(raw, dict):
-        raise DarcoError(f"Invalid template structure in {path}: expected a dictionary mapping")
+        raise DarcoError(
+            f"Invalid template structure in {path}: expected a dictionary mapping"
+        )
 
     norm = _normalize_dict_keys(raw)
 
@@ -241,4 +243,6 @@ def load_builtin_templates(
     """Load built-in templates included with darco."""
     if not BUILTIN_TEMPLATES_DIR.exists():
         return []
-    return load_templates_from_dir(BUILTIN_TEMPLATES_DIR, tags=tags, severities=severities)
+    return load_templates_from_dir(
+        BUILTIN_TEMPLATES_DIR, tags=tags, severities=severities
+    )

@@ -1,10 +1,12 @@
 import re
 from difflib import SequenceMatcher
+from urllib.parse import urlencode
 
 import httpx
 
-from .engine import execute
+from .engine import execute, rebuild_url
 from .models import (
+    BodyType,
     NameValue,
     Request,
     Response,
@@ -125,10 +127,43 @@ def _clone_and_mutate_param(
         d[param_name] = new_val
         req.body_json = d
     elif param_type == "xml":
-        req.body_raw = replace_element_text(
-            req.body_raw, param_name, orig_val, new_val
-        )
+        req.body_raw = replace_element_text(req.body_raw, param_name, orig_val, new_val)
     return req
+
+
+def _build_repro_curl(
+    base: Request,
+    param_type: str,
+    param_name: str,
+    payload: str,
+    orig_val: str | None = None,
+) -> str:
+    """Construct an executable copy-paste curl command reproducing the SQLi finding."""
+    mutated = _clone_and_mutate_param(
+        base, param_type, param_name, payload, orig_val=orig_val
+    )
+    parts = ["curl -i"]
+    if mutated.method != "GET":
+        parts.append(f"-X {mutated.method}")
+
+    final_url = rebuild_url(mutated.url, mutated.params)
+    parts.append(f"'{final_url}'")
+
+    for h in mutated.headers:
+        if h.name.lower() not in {"content-length", "host"}:
+            parts.append(f"-H '{h.name}: {h.value}'")
+
+    if mutated.body_type == BodyType.FORM:
+        encoded_body = urlencode([(p.name, p.value) for p in mutated.body_form])
+        parts.append(f"-d '{encoded_body}'")
+    elif mutated.body_type == BodyType.JSON and mutated.body_json is not None:
+        import json as _json
+
+        parts.append(f"-d '{_json.dumps(mutated.body_json)}'")
+    elif mutated.body_type == BodyType.RAW and mutated.body_raw:
+        parts.append(f"--data-binary '{mutated.body_raw}'")
+
+    return " ".join(parts)
 
 
 def _send(req: Request, session: SessionState) -> Response | None:
@@ -258,6 +293,9 @@ def scan_sqli(
                         payload_status=resp_break.status_code,
                         evidence=f"Database syntax error leaked ({db_engine}): '{err_snippet}'",
                         suggestion=f"Use parameterized queries (prepared statements) to prevent SQL injection in '{p_name}'.",
+                        curl=_build_repro_curl(
+                            request, p_type, p_name, break_payload, orig_val=orig_val
+                        ),
                     )
                 )
                 continue
@@ -293,6 +331,13 @@ def scan_sqli(
                             payload_status=resp_break.status_code,
                             evidence=f"Syntax break '{break_payload}' caused status/content anomaly ({base_status} -> {resp_break.status_code}, len {base_len} -> {resp_break.body_len}), but balanced quotes '{pair_payload}' restored baseline (status {resp_pair.status_code}).",
                             suggestion=f"Parameter '{p_name}' escapes into a SQL string context. Parameterize the query.",
+                            curl=_build_repro_curl(
+                                request,
+                                p_type,
+                                p_name,
+                                break_payload,
+                                orig_val=orig_val,
+                            ),
                         )
                     )
                     quote_balanced = True
@@ -315,6 +360,9 @@ def scan_sqli(
                         payload_status=resp_break.status_code,
                         evidence=f"Single quote injection '{break_payload}' triggered server error {resp_break.status_code} (baseline status {base_status}).",
                         suggestion=f"Inspect server logs for unhandled SQL exceptions on parameter '{p_name}'.",
+                        curl=_build_repro_curl(
+                            request, p_type, p_name, break_payload, orig_val=orig_val
+                        ),
                     )
                 )
 
@@ -354,6 +402,13 @@ def scan_sqli(
                                 payload_status=resp_arith.status_code,
                                 evidence=f"Arithmetic expression '{arith_expr}' evaluated on the backend and returned identical content to '{orig_val}' ({round(sim * 100)}% match), while control '{control_expr}' differed.",
                                 suggestion=f"Numeric parameter '{p_name}' is concatenated directly into SQL without sanitization or parameter binding.",
+                                curl=_build_repro_curl(
+                                    request,
+                                    p_type,
+                                    p_name,
+                                    arith_expr,
+                                    orig_val=orig_val,
+                                ),
                             )
                         )
 
@@ -399,6 +454,9 @@ def scan_sqli(
                         payload_status=resp_false.status_code,
                         evidence=f"Boolean TRUE '{true_payload}' matched baseline ({round(true_sim * 100)}% similarity), but FALSE '{false_payload}' altered response (status {resp_false.status_code}, {round(false_sim * 100)}% similarity, len {resp_false.body_len} vs baseline {base_len}).",
                         suggestion=f"Parameter '{p_name}' is susceptible to boolean-based blind SQL injection. Use parameterized queries.",
+                        curl=_build_repro_curl(
+                            request, p_type, p_name, false_payload, orig_val=orig_val
+                        ),
                     )
                 )
 
@@ -430,8 +488,7 @@ def scan_sqli(
                 resp_ctrl = _send(req_ctrl, session)
                 ctrl_shrinks = resp_ctrl is not None and (
                     resp_ctrl.status_code != base_status
-                    or resp_ctrl.body_len
-                    < base_len - max(30, int(base_len * 0.10))
+                    or resp_ctrl.body_len < base_len - max(30, int(base_len * 0.10))
                 )
                 if ctrl_shrinks:
                     result.vulnerabilities.append(
@@ -446,6 +503,9 @@ def scan_sqli(
                             payload_status=resp_or.status_code,
                             evidence=f"OR-injection '{or_payload}' expanded the response (len {base_len} -> {or_len}), while the 'AND 1=2' control '{ctrl_payload}' shrank/errored it (status {resp_ctrl.status_code}, len {resp_ctrl.body_len}) — the parameter is concatenated into conditional SQL and can bypass filters.",
                             suggestion=f"Parameter '{p_name}' is concatenated into a SQL WHERE clause. Use parameterized queries to prevent logic injection and hidden-data disclosure.",
+                            curl=_build_repro_curl(
+                                request, p_type, p_name, or_payload, orig_val=orig_val
+                            ),
                         )
                     )
                     break

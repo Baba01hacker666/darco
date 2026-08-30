@@ -8,8 +8,8 @@ import httpx
 
 from .engine import execute
 from .models import BodyType, HistoryRecord, NameValue, Request, SessionState
-from .workspace import Workspace
 from .waf_bypass import apply_bypass
+from .workspace import Workspace
 
 HOP_BY_HOP = {
     "connection",

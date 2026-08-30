@@ -54,7 +54,9 @@ def _substitute_variables(text: str, variables: dict[str, str]) -> str:
     for k, v in variables.items():
         res = res.replace(f"{{{{{k}}}}}", v)
     if "{{randstr}}" in res:
-        res = res.replace("{{randstr}}", "".join(random.choices(string.ascii_lowercase, k=8)))
+        res = res.replace(
+            "{{randstr}}", "".join(random.choices(string.ascii_lowercase, k=8))
+        )
     if "{{rand_int}}" in res:
         res = res.replace("{{rand_int}}", str(random.randint(100000, 999999)))
     return res
@@ -68,7 +70,9 @@ def _get_target_part(resp: httpx.Response, part: str) -> str:
         return str(resp.status_code)
     elif part_clean in ("all", "response"):
         headers_str = "\n".join(f"{k}: {v}" for k, v in resp.headers.items())
-        return f"HTTP/{resp.http_version} {resp.status_code}\n{headers_str}\n\n{resp.text}"
+        return (
+            f"HTTP/{resp.http_version} {resp.status_code}\n{headers_str}\n\n{resp.text}"
+        )
     return resp.text or ""
 
 
@@ -156,7 +160,7 @@ def _evaluate_matcher(
         else:
             try:
                 result = fn(matcher, resp, elapsed_ms)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 result = (False, [])
             if isinstance(result, tuple) and len(result) == 2:
                 matched, matched_items = bool(result[0]), list(result[1])
@@ -182,7 +186,9 @@ def _json_walk(data, dotted: str):
     return cur
 
 
-def _evaluate_extractor(ext: TemplateExtractor, resp: httpx.Response) -> dict[str, list[str]]:
+def _evaluate_extractor(
+    ext: TemplateExtractor, resp: httpx.Response
+) -> dict[str, list[str]]:
     target_text = _get_target_part(resp, ext.part)
     name = ext.name or ext.type
 
@@ -192,7 +198,11 @@ def _evaluate_extractor(ext: TemplateExtractor, resp: httpx.Response) -> dict[st
             try:
                 matches = re.findall(r_pat, target_text, re.IGNORECASE)
                 for m in matches:
-                    val = m[ext.group - 1] if isinstance(m, tuple) and len(m) >= ext.group else (m if isinstance(m, str) else str(m))
+                    val = (
+                        m[ext.group - 1]
+                        if isinstance(m, tuple) and len(m) >= ext.group
+                        else (m if isinstance(m, str) else str(m))
+                    )
                     extracted.setdefault(name, []).append(str(val))
             except (re.error, IndexError):
                 pass
@@ -223,7 +233,7 @@ def _evaluate_extractor(ext: TemplateExtractor, resp: httpx.Response) -> dict[st
         return {}
     try:
         result = fn(ext, resp)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return {}
     return result if isinstance(result, dict) else {}
 
@@ -280,7 +290,9 @@ async def execute_template_on_target(
                 break
             for raw_path in req.path:
                 req_url = _substitute_variables(raw_path, vars_dict)
-                req_body = _substitute_variables(req.body, vars_dict) if req.body else None
+                req_body = (
+                    _substitute_variables(req.body, vars_dict) if req.body else None
+                )
                 req_headers = {
                     k: _substitute_variables(v, vars_dict)
                     for k, v in req.headers.items()
@@ -336,7 +348,9 @@ async def execute_template_on_target(
                         matched_words_str = ", ".join(all_matched_words[:5])
                         evidence += f" [Matched: {matched_words_str}]"
                     if public_extracted:
-                        ext_str = ", ".join(f"{k}={v}" for k, v in public_extracted.items())
+                        ext_str = ", ".join(
+                            f"{k}={v}" for k, v in public_extracted.items()
+                        )
                         evidence += f" [Extracted: {ext_str}]"
 
                     curl_cmd = f'curl -k -i -X {req.method} "{req_url}"'
@@ -358,12 +372,13 @@ async def execute_template_on_target(
                     norm_tid = template.id.replace("-", "_")
                     findings.append(
                         Finding(
-                            id=f"template-{template.id}-{hash(req_url) & 0xffff:04x}",
+                            id=f"template-{template.id}-{hash(req_url) & 0xFFFF:04x}",
                             type=f"template_{norm_tid}",
                             severity=template.info.severity,
                             location=req_url,
                             evidence=evidence,
-                            suggestion=template.info.remediation or "Review the exposed asset or endpoint and apply security controls.",
+                            suggestion=template.info.remediation
+                            or "Review the exposed asset or endpoint and apply security controls.",
                         )
                     )
 

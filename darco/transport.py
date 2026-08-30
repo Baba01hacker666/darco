@@ -22,9 +22,9 @@ than raising, so a dead port never crashes a scan.
 import socket
 import ssl
 import struct
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 from urllib.parse import urlparse
+
 
 # ------------------------------------------------------------------ helpers
 def _parse(url: str) -> tuple[str, int, bool]:
@@ -59,7 +59,7 @@ def _send_recv_raw(
                 if not buf:
                     break
                 chunks.append(buf)
-        except socket.timeout:
+        except TimeoutError:
             pass
         return b"".join(chunks)
     finally:
@@ -100,7 +100,11 @@ def probe_http2(url: str, timeout: float = 8) -> dict:
         try:
             ss = ctx.wrap_socket(s, server_hostname=host)
         except ssl.SSLError as exc:
-            return {"target": url, "http2": False, "error": f"tls handshake failed: {exc}"}
+            return {
+                "target": url,
+                "http2": False,
+                "error": f"tls handshake failed: {exc}",
+            }
         negotiated = ss.selected_alpn_protocol() or "none"
         h2 = negotiated == "h2"
         srv_settings = b""
@@ -115,8 +119,11 @@ def probe_http2(url: str, timeout: float = 8) -> dict:
             "target": url,
             "http2": h2,
             "negotiated": negotiated,
+            "settings_frame_seen": bool(srv_settings[:3] == b"\x00\x00\x00"),
             "setttings_frame_seen": bool(srv_settings[:3] == b"\x00\x00\x00"),
-            "note": "HTTP/2 supported" if h2 else "HTTP/2 not negotiated (ALPN returned http/1.1)",
+            "note": "HTTP/2 supported"
+            if h2
+            else "HTTP/2 not negotiated (ALPN returned http/1.1)",
         }
     except Exception as exc:  # noqa: BLE001
         return {"target": url, "http2": False, "error": str(exc)}
@@ -129,23 +136,29 @@ _SMUGGLE_PROBES = [
     (
         "cl-te",
         "Transfer-Encoding: chunked + Content-Length mismatch",
-        "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Length: 4\r\n"
-        "Transfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n"
-        "0\r\n\r\nG",  # 'G' left over after CL=4 of "0\r\n\r\n"
+        (
+            "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Length: 4\r\n"
+            "Transfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n"
+            "0\r\n\r\nG"  # 'G' left over after CL=4 of "0\r\n\r\n"
+        ),
     ),
     (
         "te-cl",
         "Content-Length + Transfer-Encoding: chunked (front may prefer CL)",
-        "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Length: 6\r\n"
-        "Transfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n"
-        "0\r\n\r\nX",
+        (
+            "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Length: 6\r\n"
+            "Transfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n"
+            "0\r\n\r\nX"
+        ),
     ),
     (
         "h2-smuggle",
         "HTTP/2 :path injection with CRLF in pseudo-header (if tunneled)",
-        "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Length: 30\r\n"
-        "Transfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n"
-        "0\r\n\r\nGET /smuggle-check HTTP/1.1\r\nHost: {host}\r\n\r\n",
+        (
+            "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Length: 30\r\n"
+            "Transfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n"
+            "0\r\n\r\nGET /smuggle-check HTTP/1.1\r\nHost: {host}\r\n\r\n"
+        ),
     ),
 ]
 
@@ -229,6 +242,7 @@ class TlsFingerprint:
             "error": self.error or None,
         }
 
+
 # Standard extension / curve set a modern Python ssl ClientHello carries.
 # (SNI is per-host and excluded from JA3 by design; the rest is constant.)
 _CLIENT_EXTENSIONS = [
@@ -249,9 +263,12 @@ _CLIENT_CURVES = [0x001D, 0x0017, 0x0018, 0x0019]
 _CLIENT_EC_POINTS = [0x00, 0x01, 0x02]
 
 
-def _ja3_string(ciphers: list[int], exts: list[int], curves: list[int], ec: list[int]) -> str:
+def _ja3_string(
+    ciphers: list[int], exts: list[int], curves: list[int], ec: list[int]
+) -> str:
     def hx(vals: list[int]) -> str:
         return "-".join(f"{v:04x}" for v in vals)
+
     return f"{hx(ciphers)},{hx(exts)},{hx(curves)},{hx(ec)}"
 
 
@@ -294,16 +311,19 @@ def ja3_fingerprint(url: str, timeout: float = 8) -> dict:
             # the server pushed during the handshake (the ServerHello record).
             try:
                 import select
+
                 # give the stack a moment to flush the ServerHello
                 if select.select([s], [], [], 1.0)[0]:
                     server_hello = s.recv(8192)
             except OSError:
                 pass
             ss.close()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass
 
-        ja3s = _ja3s_from_server_hello(server_hello) if server_hello[:1] == b"\x16" else ""
+        ja3s = (
+            _ja3s_from_server_hello(server_hello) if server_hello[:1] == b"\x16" else ""
+        )
         return TlsFingerprint(
             target=url,
             ja3=ja3,
@@ -328,23 +348,22 @@ def _ja3s_from_server_hello(server_hello: bytes) -> str:
         # session id
         sid_len = body[34]
         off = 35 + sid_len
-        cipher = int.from_bytes(body[off:off + 2], "big")
+        cipher = int.from_bytes(body[off : off + 2], "big")
         off += 2 + 1  # compression
         if off + 2 > len(body):
             return f"{cipher},,"
-        ext_total = int.from_bytes(body[off:off + 2], "big")
+        ext_total = int.from_bytes(body[off : off + 2], "big")
         off += 2
         ext_ids: list[int] = []
         i = 0
         while i < ext_total and off + i + 4 <= len(body):
-            et = int.from_bytes(body[off + i:off + i + 2], "big")
-            el = int.from_bytes(body[off + i + 2:off + i + 4], "big")
+            et = int.from_bytes(body[off + i : off + i + 2], "big")
+            el = int.from_bytes(body[off + i + 2 : off + i + 4], "big")
             ext_ids.append(et)
             i += 4 + el
         return f"{cipher},{','.join(str(e) for e in ext_ids)},"
     except Exception:  # noqa: BLE001
         return ""
-
 
 
 def run_transport_scan(url: str, timeout: float = 8) -> dict:

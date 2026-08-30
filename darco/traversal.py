@@ -115,6 +115,57 @@ def _clone_and_mutate_param(
     return req
 
 
+def _looks_like_file_or_path(val: str) -> bool:
+    if not val or len(val) > 256:
+        return False
+    v = val.strip()
+    if "/" in v or "\\" in v:
+        return True
+    if "." in v and not v.startswith(".") and not v.endswith("."):
+        ext = v.rsplit(".", 1)[-1].lower()
+        if ext in {
+            "txt",
+            "pdf",
+            "html",
+            "htm",
+            "php",
+            "asp",
+            "aspx",
+            "jsp",
+            "json",
+            "xml",
+            "csv",
+            "log",
+            "ini",
+            "conf",
+            "config",
+            "yml",
+            "yaml",
+            "png",
+            "jpg",
+            "jpeg",
+            "gif",
+            "svg",
+            "doc",
+            "docx",
+            "xls",
+            "xlsx",
+            "zip",
+            "tar",
+            "gz",
+            "sql",
+            "sh",
+            "py",
+            "rb",
+            "js",
+            "css",
+            "env",
+            "bak",
+        }:
+            return True
+    return False
+
+
 def _is_traversal_candidate(name: str) -> bool:
     normalized = name.lower().replace("-", "").replace("_", "").replace(".", "")
     return normalized in _TRAVERSAL_HINTS
@@ -132,21 +183,26 @@ def scan_traversal(
 
     candidates: list[tuple[str, str]] = []
     sources = (
-        [("query", p.name) for p in request.params]
-        + [("form", p.name) for p in request.body_form]
+        [("query", p.name, p.value or "") for p in request.params]
+        + [("form", p.name, p.value or "") for p in request.body_form]
         + (
-            [("json", k) for k in request.body_json]
+            [
+                ("json", k, str(v) if v is not None else "")
+                for k, v in request.body_json.items()
+            ]
             if isinstance(request.body_json, dict)
             else []
         )
     )
-    for p_type, name in sources:
-        if param_filter and name != param_filter:
-            continue
-        if not include_state_fields and is_state_field(name):
-            continue
-        if not _is_traversal_candidate(name):
-            continue
+    for p_type, name, val in sources:
+        if param_filter:
+            if name != param_filter:
+                continue
+        else:
+            if not include_state_fields and is_state_field(name):
+                continue
+            if not (_is_traversal_candidate(name) or _looks_like_file_or_path(val)):
+                continue
         candidates.append((p_type, name))
 
     result = TraversalScanResult(
@@ -189,4 +245,4 @@ def scan_traversal(
     return result
 
 
-__all__ = ["scan_traversal", "TRAVERSAL_PARAM_HINTS"]
+__all__ = ["TRAVERSAL_PARAM_HINTS", "scan_traversal"]

@@ -8,6 +8,8 @@ one or the other based on `--format`. This module owns the markdown builders so
 `cli.py` stays focused on wiring.
 """
 
+from typing import Any
+
 from .models import Finding
 
 
@@ -85,8 +87,7 @@ def md_plugins(d: dict) -> str:
     if matchers:
         lines.append("")
         lines.append(
-            "Custom template matcher types: "
-            + ", ".join(f"`{m}`" for m in matchers)
+            "Custom template matcher types: " + ", ".join(f"`{m}`" for m in matchers)
         )
     if extractors:
         lines.append(
@@ -805,6 +806,12 @@ def md_xss(d: dict) -> str:
     return "\n".join(lines)
 
 
+def _item_get(obj: Any, key: str, default: Any = "") -> Any:
+    return (
+        obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+    )
+
+
 def md_redirect(d: dict) -> str:
     target = d.get("target") or ""
     tested = d.get("tested_params") or []
@@ -820,29 +827,28 @@ def md_redirect(d: dict) -> str:
     if not findings:
         lines.append("## Results")
         lines.append("")
-        lines.append("_No open-redirect behavior detected across tested parameters._")
+        lines.append(
+            "_No open redirect vulnerabilities detected across tested parameters._"
+        )
         return "\n".join(lines)
 
     lines.append("## Open Redirect Findings")
     lines.append("")
     for r in findings:
-        get = lambda k, dflt="": (  # noqa: E731
-            r.get(k) if isinstance(r, dict) else getattr(r, k, dflt)
-        )
-        badge = f"**[{str(get('confidence', 'low')).upper()}]**"
+        badge = f"**[{str(_item_get(r, 'confidence', 'low')).upper()}]**"
         lines.append(
-            f"### {badge} Parameter `{get('param')}` ({get('param_type')})"
+            f"### {badge} Parameter `{_item_get(r, 'param')}` ({_item_get(r, 'param_type')})"
         )
-        lines.append(f"- **Mechanism**: `{get('redirect_type')}`")
-        lines.append(f"- **Probe Payload**: `{get('payload')}`")
-        if get("redirect_to"):
-            lines.append(f"- **Redirects To**: `{get('redirect_to')}`")
-        if get("status_code"):
-            lines.append(f"- **Status Code**: `{get('status_code')}`")
-        if get("evidence"):
-            lines.append(f"- **Evidence**: {get('evidence')}")
-        if get("suggestion"):
-            lines.append(f"- **Remediation**: {get('suggestion')}")
+        lines.append(f"- **Mechanism**: `{_item_get(r, 'redirect_type')}`")
+        lines.append(f"- **Probe Payload**: `{_item_get(r, 'payload')}`")
+        if _item_get(r, "redirect_to"):
+            lines.append(f"- **Redirects To**: `{_item_get(r, 'redirect_to')}`")
+        if _item_get(r, "status_code"):
+            lines.append(f"- **Status Code**: `{_item_get(r, 'status_code')}`")
+        if _item_get(r, "evidence"):
+            lines.append(f"- **Evidence**: {_item_get(r, 'evidence')}")
+        if _item_get(r, "suggestion"):
+            lines.append(f"- **Remediation**: {_item_get(r, 'suggestion')}")
         lines.append("")
 
     return "\n".join(lines)
@@ -871,21 +877,18 @@ def md_traversal(d: dict) -> str:
     lines.append("## Path Traversal Findings")
     lines.append("")
     for t in findings:
-        get = lambda k, dflt="": (  # noqa: E731
-            t.get(k) if isinstance(t, dict) else getattr(t, k, dflt)
-        )
-        badge = f"**[{str(get('confidence', 'low')).upper()}]**"
+        badge = f"**[{str(_item_get(t, 'confidence', 'low')).upper()}]**"
         lines.append(
-            f"### {badge} Parameter `{get('param')}` ({get('param_type')})"
+            f"### {badge} Parameter `{_item_get(t, 'param')}` ({_item_get(t, 'param_type')})"
         )
-        lines.append(f"- **Target File**: `{get('target_file')}`")
-        lines.append(f"- **Payload**: `{get('payload')}`")
-        if get("status_code"):
-            lines.append(f"- **Status Code**: `{get('status_code')}`")
-        if get("evidence"):
-            lines.append(f"- **Evidence**: {get('evidence')}")
-        if get("suggestion"):
-            lines.append(f"- **Remediation**: {get('suggestion')}")
+        lines.append(f"- **Target File**: `{_item_get(t, 'target_file')}`")
+        lines.append(f"- **Payload**: `{_item_get(t, 'payload')}`")
+        if _item_get(t, "status_code"):
+            lines.append(f"- **Status Code**: `{_item_get(t, 'status_code')}`")
+        if _item_get(t, "evidence"):
+            lines.append(f"- **Evidence**: {_item_get(t, 'evidence')}")
+        if _item_get(t, "suggestion"):
+            lines.append(f"- **Remediation**: {_item_get(t, 'suggestion')}")
         lines.append("")
 
     return "\n".join(lines)
@@ -907,7 +910,9 @@ def md_stored_xss(d: dict) -> str:
         notes = d.get("notes") or []
         lines.append("## Results")
         lines.append("")
-        lines.append("_No stored XSS confirmed — canaries did not survive rendering unencoded._")
+        lines.append(
+            "_No stored XSS confirmed — canaries did not survive rendering unencoded._"
+        )
         for n in notes:
             lines.append(f"- {n}")
         return "\n".join(lines)
@@ -915,21 +920,18 @@ def md_stored_xss(d: dict) -> str:
     lines.append("## Stored XSS Findings")
     lines.append("")
     for f in findings:
-        get = lambda k, dflt="": (  # noqa: E731
-            f.get(k) if isinstance(f, dict) else getattr(f, k, dflt)
-        )
-        badge = f"**[{str(get('confidence', 'low')).upper()}]**"
+        badge = f"**[{str(_item_get(f, 'confidence', 'low')).upper()}]**"
         lines.append(
-            f"### {badge} Field `{get('param')}` via {get('method')} `{get('form_action')}`"
+            f"### {badge} Field `{_item_get(f, 'param')}` via {_item_get(f, 'method')} `{_item_get(f, 'form_action')}`"
         )
-        if get("render_url"):
-            lines.append(f"- **Renders On**: `{get('render_url')}`")
-        lines.append(f"- **Context**: `{get('context')}`")
-        lines.append(f"- **Payload**: `{get('payload')}`")
-        if get("evidence"):
-            lines.append(f"- **Evidence**: {get('evidence')}")
-        if get("suggestion"):
-            lines.append(f"- **Remediation**: {get('suggestion')}")
+        if _item_get(f, "render_url"):
+            lines.append(f"- **Renders On**: `{_item_get(f, 'render_url')}`")
+        lines.append(f"- **Context**: `{_item_get(f, 'context')}`")
+        lines.append(f"- **Payload**: `{_item_get(f, 'payload')}`")
+        if _item_get(f, "evidence"):
+            lines.append(f"- **Evidence**: {_item_get(f, 'evidence')}")
+        if _item_get(f, "suggestion"):
+            lines.append(f"- **Remediation**: {_item_get(f, 'suggestion')}")
         lines.append("")
 
     return "\n".join(lines)
@@ -961,7 +963,9 @@ def md_scan(d: dict) -> str:
     lines.append(f"- **Open Redirects**: `{len(d.get('redirect_findings') or [])}`")
     lines.append(f"- **Path Traversals**: `{len(d.get('traversal_findings') or [])}`")
     lines.append(f"- **Stored XSS**: `{len(d.get('stored_xss_findings') or [])}`")
-    lines.append(f"- **Login Bypass Candidates**: `{len(d.get('login_bypasses') or [])}`")
+    lines.append(
+        f"- **Login Bypass Candidates**: `{len(d.get('login_bypasses') or [])}`"
+    )
     lines.append(f"- **Total Security Findings**: `{len(findings)}`")
     lines.append("")
 
@@ -1093,7 +1097,9 @@ def md_scan(d: dict) -> str:
             auth = p.get("auth_type", "unknown")
             title = p.get("title") or "—"
             url_str = p.get("url") or ""
-            lines.append(f"| `{path}` | `{st}` | `{auth}` | {title[:35]} | `{url_str}` |")
+            lines.append(
+                f"| `{path}` | `{st}` | `{auth}` | {title[:35]} | `{url_str}` |"
+            )
         lines.append("")
 
     # Upload Security Findings
@@ -1263,9 +1269,7 @@ def md_js(d: dict) -> str:
 
     # Exposed Secrets & Default Credentials
     if secrets:
-        lines.append(
-            f"## 🔑 Exposed Secrets & Default Credentials ({len(secrets)})"
-        )
+        lines.append(f"## 🔑 Exposed Secrets & Default Credentials ({len(secrets)})")
         lines.append("")
         for s in secrets:
             s_type = s.get("type") if isinstance(s, dict) else getattr(s, "type", "")
@@ -1404,13 +1408,17 @@ def md_admin(d: dict) -> str:
     lines.append(f"- **Smart Credential Tests Run**: `{tested}`")
     lines.append(f"- **Successful Logins / Auth Bypasses**: `{len(bypasses)}`")
     if emails:
-        lines.append(f"- **Emails Incorporated**: {', '.join(f'`{e}`' for e in emails)}")
+        lines.append(
+            f"- **Emails Incorporated**: {', '.join(f'`{e}`' for e in emails)}"
+        )
     lines.append("")
 
     if not panels:
         lines.append("## Results")
         lines.append("")
-        lines.append("_No accessible administrative panels or login portals discovered on standard paths._")
+        lines.append(
+            "_No accessible administrative panels or login portals discovered on standard paths._"
+        )
         return "\n".join(lines)
 
     lines.append(f"## Discovered Admin Panels ({len(panels)})")
@@ -1469,7 +1477,9 @@ def md_template_report(d: dict) -> str:
     if not matches:
         lines.append("## Results")
         lines.append("")
-        lines.append("_No vulnerabilities or signature matches detected by executed templates._")
+        lines.append(
+            "_No vulnerabilities or signature matches detected by executed templates._"
+        )
         return "\n".join(lines)
 
     lines.append(f"## Matched Vulnerabilities & Exposures ({len(matches)})")
@@ -1544,7 +1554,9 @@ def md_origin(d: dict) -> str:
 def md_waf_bypass(d: dict) -> str:
     waf = d.get("waf") or "unknown"
     lines = [f"# WAF bypass: `{waf}`", ""]
-    lines.append(f"- **origin IP**: {d.get('origin_ip') or '_(none — run `darco origin`)_'}")
+    lines.append(
+        f"- **origin IP**: {d.get('origin_ip') or '_(none — run `darco origin`)_'}"
+    )
     lines.append(f"- **techniques**: `{d.get('technique_count')}`")
     lines.append("")
     for t in d.get("techniques") or []:

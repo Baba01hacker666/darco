@@ -63,9 +63,7 @@ def test_xss_skips_framework_state_fields_by_default(monkeypatch):
         method="POST",
         url="http://app.test/login",
         headers=[
-            NameValue(
-                name="Content-Type", value="application/x-www-form-urlencoded"
-            )
+            NameValue(name="Content-Type", value="application/x-www-form-urlencoded")
         ],
         body_type=BodyType.FORM,
         body_form=[
@@ -94,9 +92,7 @@ def test_xss_include_framework_state_fields(monkeypatch):
         method="POST",
         url="http://app.test/login",
         headers=[
-            NameValue(
-                name="Content-Type", value="application/x-www-form-urlencoded"
-            )
+            NameValue(name="Content-Type", value="application/x-www-form-urlencoded")
         ],
         body_type=BodyType.FORM,
         body_form=[

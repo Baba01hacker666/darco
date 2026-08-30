@@ -42,9 +42,7 @@ STATE_FIELD_NAMES = frozenset(
 _STATE_ERROR_PATTERNS = (
     re.compile(r"the state information is invalid for this page", re.IGNORECASE),
     re.compile(r"validation of viewstate mac failed", re.IGNORECASE),
-    re.compile(
-        r"the required anti-forgery (form field|cookie|token)", re.IGNORECASE
-    ),
+    re.compile(r"the required anti-forgery (form field|cookie|token)", re.IGNORECASE),
 )
 
 

@@ -301,6 +301,7 @@ async def _process(
         )
 
     body = resp.text
+    soup: BeautifulSoup | None = None
     if is_html(content_type, body):
         soup = BeautifulSoup(body, "html.parser")
         children: list[str] = []
@@ -375,7 +376,9 @@ async def _process(
             waf_by_name[waf.name] = waf
 
     if emails_found is not None:
-        discovered_emails = extract_emails(soup if is_html(content_type, body) else body)
+        discovered_emails = extract_emails(
+            soup if is_html(content_type, body) else body
+        )
         for em in discovered_emails:
             if em not in emails_found:
                 emails_found.add(em)

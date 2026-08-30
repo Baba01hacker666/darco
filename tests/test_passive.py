@@ -84,10 +84,7 @@ async def test_security_txt_parsing(app):
 
 @pytest.mark.anyio
 async def test_security_txt_expired_naive_and_aware(monkeypatch):
-    sample_sec = (
-        "Contact: security@example.com\n"
-        "Expires: 2020-01-01T00:00:00\n"
-    )
+    sample_sec = "Contact: security@example.com\nExpires: 2020-01-01T00:00:00\n"
 
     class MockClient:
         async def get(self, url):
@@ -95,12 +92,15 @@ async def test_security_txt_expired_naive_and_aware(monkeypatch):
                 status_code = 200
                 text = sample_sec
                 url = "https://example.com/.well-known/security.txt"
+
             return MockResp()
 
         async def aclose(self):
             pass
 
-    sec, findings = await inspect_security_txt("https://example.com", client=MockClient())
+    sec, findings = await inspect_security_txt(
+        "https://example.com", client=MockClient()
+    )
     assert sec.present
     assert any(f.type == "security_txt_expired" for f in findings)
 
@@ -129,9 +129,7 @@ async def test_passive_enum_runner(app, monkeypatch):
     async def fake_enumerate_dns(domain, client=None):
         return canned_records, canned_findings
 
-    monkeypatch.setattr(
-        "darco.passive.runner.enumerate_dns", fake_enumerate_dns
-    )
+    monkeypatch.setattr("darco.passive.runner.enumerate_dns", fake_enumerate_dns)
     report = await run_passive_enum(
         f"{app}/",
         subdomains=False,

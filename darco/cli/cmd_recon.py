@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-
 import click
 
 from ..errors import DarcoError
 from ..models import Request, to_json
-
-from ._group import cli
 from ._context import _find_workspace, _one_shot_session
+from ._group import cli
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ detect (tech & WAF)

@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-
 import click
 
 from ..errors import DarcoError
 from ..models import to_json
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._oneshot import (
     _resolve_base_request,
 )
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ xss & reflection testing
@@ -63,8 +60,19 @@ from ._output import _emit
 )
 @click.pass_context
 def xss_cmd(
-    ctx, target, url, from_id, param, headers, cookies, method, data, cli_form,
-    save, include_state, insecure,
+    ctx,
+    target,
+    url,
+    from_id,
+    param,
+    headers,
+    cookies,
+    method,
+    data,
+    cli_form,
+    save,
+    include_state,
+    insecure,
 ):
     """XSS & reflection audit: probes inputs, classifies reflection contexts, and audits HTML encoding."""
     from ..models import Cookie, Finding, NameValue
@@ -175,8 +183,19 @@ def xss_cmd(
 @click.option("--insecure", is_flag=True, default=False)
 @click.pass_context
 def reflect_cmd(
-    ctx, target, url, from_id, param, headers, cookies, method, data, cli_form,
-    save, include_state, insecure,
+    ctx,
+    target,
+    url,
+    from_id,
+    param,
+    headers,
+    cookies,
+    method,
+    data,
+    cli_form,
+    save,
+    include_state,
+    insecure,
 ):
     """Alias for XSS & reflection audit."""
     ctx.invoke(
@@ -194,6 +213,7 @@ def reflect_cmd(
         include_state=include_state,
         insecure=insecure,
     )
+
 
 # ------------------------------------------------------------------ stored xss testing
 @cli.command("sxss")
@@ -213,12 +233,12 @@ def reflect_cmd(
 def sxss_cmd(ctx, target, url, from_id, save, insecure):
     """Stored XSS audit: submits canaries through storable forms and verifies raw rendering on later views."""
     import httpx as _httpx
+    from bs4 import BeautifulSoup
 
     from ..discovery.parsers import extract_forms
     from ..models import Finding
     from ..render import md_stored_xss
     from ..stored_xss import USER_AGENT, audit_stored_xss
-    from bs4 import BeautifulSoup
 
     if target:
         if target.isdigit() or (target.startswith("0") and len(target) == 4):
@@ -254,7 +274,9 @@ def sxss_cmd(ctx, target, url, from_id, save, insecure):
             resp = client.get(url, headers={"User-Agent": USER_AGENT})
             resp.raise_for_status()
             # Use the final URL after redirects as the form-discovery base.
-            forms = extract_forms(BeautifulSoup(resp.text, "html.parser"), str(resp.url))
+            forms = extract_forms(
+                BeautifulSoup(resp.text, "html.parser"), str(resp.url)
+            )
             result = audit_stored_xss(forms, target=url, verify=not insecure)
     except _httpx.HTTPError as exc:
         raise DarcoError(f"failed to fetch '{url}': {exc}") from exc

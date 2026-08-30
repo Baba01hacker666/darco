@@ -10,11 +10,9 @@ import click
 from ..errors import DarcoError
 from ..models import to_json
 from ..workspace import Workspace
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ discover / crawl / auto-scan
@@ -45,6 +43,21 @@ from ._output import _emit
     help="Auto-audit discovered file upload forms/endpoints (SVG/HTML XSS)",
 )
 @click.option(
+    "--redirect",
+    is_flag=True,
+    help="Auto-audit discovered parameters for open redirects",
+)
+@click.option(
+    "--traversal",
+    is_flag=True,
+    help="Auto-audit discovered parameters for directory traversal",
+)
+@click.option(
+    "--stored-xss",
+    is_flag=True,
+    help="Auto-audit discovered forms for stored XSS execution",
+)
+@click.option(
     "--include-state",
     is_flag=True,
     default=False,
@@ -72,6 +85,9 @@ def discover_cmd(
     sqli,
     xss,
     upload,
+    redirect,
+    traversal,
+    stored_xss,
     include_state,
     default_creds,
     insecure,
@@ -96,7 +112,7 @@ def discover_cmd(
 
     cfg = ws.load_config()
 
-    if fuzz or sqli or xss or upload:
+    if fuzz or sqli or xss or upload or redirect or traversal or stored_xss:
         report = asyncio.run(
             run_auto_scan(
                 ws,
@@ -109,6 +125,9 @@ def discover_cmd(
                 sqli=sqli,
                 xss=xss,
                 upload=upload,
+                redirect=redirect,
+                traversal=traversal,
+                stored_xss=stored_xss,
                 default_creds=default_creds,
                 include_state_fields=include_state,
                 timeout=timeout,
@@ -163,6 +182,9 @@ def discover_cmd(
     is_flag=True,
     help="Auto-audit discovered file upload forms/endpoints",
 )
+@click.option("--redirect", is_flag=True, help="Auto-audit for open redirects")
+@click.option("--traversal", is_flag=True, help="Auto-audit for path traversal")
+@click.option("--stored-xss", is_flag=True, help="Auto-audit for stored XSS")
 @click.option(
     "--include-state",
     is_flag=True,
@@ -191,6 +213,9 @@ def crawl_cmd(
     sqli,
     xss,
     upload,
+    redirect,
+    traversal,
+    stored_xss,
     include_state,
     default_creds,
     insecure,
@@ -210,6 +235,9 @@ def crawl_cmd(
         sqli=sqli,
         xss=xss,
         upload=upload,
+        redirect=redirect,
+        traversal=traversal,
+        stored_xss=stored_xss,
         include_state=include_state,
         default_creds=default_creds,
         insecure=insecure,
@@ -227,7 +255,12 @@ def crawl_cmd(
 @click.option("--no-sqli", is_flag=True, help="Disable SQL injection testing")
 @click.option("--no-xss", is_flag=True, help="Disable XSS reflection testing")
 @click.option("--no-upload", is_flag=True, help="Disable file upload security auditing")
-@click.option("--no-default-creds", is_flag=True, help="Disable default credentials testing")
+@click.option("--no-redirect", is_flag=True, help="Disable open redirect auditing")
+@click.option("--no-traversal", is_flag=True, help="Disable path traversal auditing")
+@click.option("--no-stored-xss", is_flag=True, help="Disable stored XSS auditing")
+@click.option(
+    "--no-default-creds", is_flag=True, help="Disable default credentials testing"
+)
 @click.option("--no-js", is_flag=True)
 @click.option(
     "--include-state",
@@ -249,6 +282,9 @@ def scan_cmd(
     no_sqli,
     no_xss,
     no_upload,
+    no_redirect,
+    no_traversal,
+    no_stored_xss,
     no_default_creds,
     no_js,
     include_state,
@@ -269,6 +305,9 @@ def scan_cmd(
         sqli=not no_sqli,
         xss=not no_xss,
         upload=not no_upload,
+        redirect=not no_redirect,
+        traversal=not no_traversal,
+        stored_xss=not no_stored_xss,
         include_state=include_state,
         default_creds=not no_default_creds,
         insecure=insecure,
@@ -286,6 +325,9 @@ def scan_cmd(
 @click.option("--no-sqli", is_flag=True)
 @click.option("--no-xss", is_flag=True)
 @click.option("--no-upload", is_flag=True)
+@click.option("--no-redirect", is_flag=True)
+@click.option("--no-traversal", is_flag=True)
+@click.option("--no-stored-xss", is_flag=True)
 @click.option("--no-default-creds", is_flag=True)
 @click.option("--no-js", is_flag=True)
 @click.option(
@@ -308,6 +350,9 @@ def auto_cmd(
     no_sqli,
     no_xss,
     no_upload,
+    no_redirect,
+    no_traversal,
+    no_stored_xss,
     no_default_creds,
     no_js,
     include_state,
@@ -326,6 +371,9 @@ def auto_cmd(
         no_sqli=no_sqli,
         no_xss=no_xss,
         no_upload=no_upload,
+        no_redirect=no_redirect,
+        no_traversal=no_traversal,
+        no_stored_xss=no_stored_xss,
         no_default_creds=no_default_creds,
         no_js=no_js,
         include_state=include_state,

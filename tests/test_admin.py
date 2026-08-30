@@ -40,7 +40,10 @@ def test_generate_smart_credentials_domain_and_emails():
     # Standard admin
     assert ("admin", "admin") in creds
     # Domain admin email
-    assert ("admin@portal.mycompany.org", "admin") in creds or ("admin@mycompany.org", "admin") in creds
+    assert ("admin@portal.mycompany.org", "admin") in creds or (
+        "admin@mycompany.org",
+        "admin",
+    ) in creds
     # Found email
     assert ("alice.smith@mycompany.org", "password") in creds
     assert ("alice.smith", "alice.smith") in creds
@@ -66,7 +69,7 @@ class MockAdminTransport(httpx.AsyncBaseTransport):
             return httpx.Response(
                 200,
                 headers={"Content-Type": "text/html"},
-                text="<html><head><title>Admin Login</title></head><body><form action=\"/admin/login\" method=\"POST\"><input name=\"username\" type=\"text\"><input name=\"password\" type=\"password\"></form></body></html>",
+                text='<html><head><title>Admin Login</title></head><body><form action="/admin/login" method="POST"><input name="username" type="text"><input name="password" type="password"></form></body></html>',
             )
         elif path == "/administrator":
             return httpx.Response(
@@ -74,7 +77,9 @@ class MockAdminTransport(httpx.AsyncBaseTransport):
                 headers={"Location": "/admin/login"},
             )
         elif path == "/cpanel":
-            return httpx.Response(401, headers={"WWW-Authenticate": "Basic realm=\"cPanel\""})
+            return httpx.Response(
+                401, headers={"WWW-Authenticate": 'Basic realm="cPanel"'}
+            )
         elif path == "/manager/html":
             return httpx.Response(403, text="Forbidden")
         else:
@@ -87,7 +92,14 @@ def test_find_admin_panels_mock():
         try:
             panels = await find_admin_panels(
                 "http://test.local",
-                paths=["/admin", "/admin/login", "/administrator", "/cpanel", "/manager/html", "/nonexistent"],
+                paths=[
+                    "/admin",
+                    "/admin/login",
+                    "/administrator",
+                    "/cpanel",
+                    "/manager/html",
+                    "/nonexistent",
+                ],
                 client=client,
             )
             assert len(panels) == 5
@@ -113,12 +125,16 @@ def test_find_admin_panels_mock():
             await client.aclose()
 
     import asyncio
+
     asyncio.run(_run())
 
 
 # ------------------------------------------------------------------ CLI
 def test_cli_admin_command(app, tmp_path):
-    res = run(["admin", f"{app}/login", "--no-default-creds"], tmp_path)
+    res = run(
+        ["admin", f"{app}/login", "--paths", "/admin,/login", "--no-default-creds"],
+        tmp_path,
+    )
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "target" in data
@@ -127,14 +143,34 @@ def test_cli_admin_command(app, tmp_path):
 
 
 def test_cli_admin_finder_alias(app, tmp_path):
-    res = run(["admin-finder", f"{app}/login", "--no-default-creds"], tmp_path)
+    res = run(
+        [
+            "admin-finder",
+            f"{app}/login",
+            "--paths",
+            "/admin,/login",
+            "--no-default-creds",
+        ],
+        tmp_path,
+    )
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "panels_found" in data
 
 
 def test_cli_admin_with_email_flag(app, tmp_path):
-    res = run(["admin", f"{app}/login", "--email", "admin@target.local", "--no-default-creds"], tmp_path)
+    res = run(
+        [
+            "admin",
+            f"{app}/login",
+            "--paths",
+            "/admin,/login",
+            "--email",
+            "admin@target.local",
+            "--no-default-creds",
+        ],
+        tmp_path,
+    )
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "admin@target.local" in data.get("emails_used", [])
@@ -147,7 +183,9 @@ def test_cli_admin_with_workspace_sitemap(app, tmp_path):
     Workspace.create(app, tmp_path / "target.test.darco").save_sitemap(
         SiteMap(target=app, emails=["admin@target.test"])
     )
-    res = run(["admin", app, "--no-default-creds"], tmp_path)
+    res = run(
+        ["admin", app, "--paths", "/admin,/login", "--no-default-creds"], tmp_path
+    )
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "admin@target.test" in data.get("emails_used", [])

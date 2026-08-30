@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-
 import click
 
 from ..errors import DarcoError
 from ..models import to_json
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._oneshot import (
     _resolve_base_request,
 )
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ path traversal testing
@@ -63,8 +60,19 @@ from ._output import _emit
 )
 @click.pass_context
 def trav_cmd(
-    ctx, target, url, from_id, param, headers, cookies, method, data, cli_form,
-    save, include_state, insecure,
+    ctx,
+    target,
+    url,
+    from_id,
+    param,
+    headers,
+    cookies,
+    method,
+    data,
+    cli_form,
+    save,
+    include_state,
+    insecure,
 ):
     """Path traversal audit: probes file-path parameters for directory traversal file disclosure."""
     from ..models import Cookie, Finding, NameValue
@@ -164,8 +172,19 @@ def trav_cmd(
 @click.option("--insecure", is_flag=True, default=False)
 @click.pass_context
 def traversal_cmd(
-    ctx, target, url, from_id, param, headers, cookies, method, data, cli_form,
-    save, include_state, insecure,
+    ctx,
+    target,
+    url,
+    from_id,
+    param,
+    headers,
+    cookies,
+    method,
+    data,
+    cli_form,
+    save,
+    include_state,
+    insecure,
 ):
     """Alias for the path traversal audit."""
     ctx.invoke(

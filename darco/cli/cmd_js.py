@@ -9,11 +9,9 @@ import click
 
 from ..errors import DarcoError
 from ..models import to_json
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ js & api extraction
@@ -48,7 +46,9 @@ from ._output import _emit
     help="Request timeout in seconds",
 )
 @click.pass_context
-def js_cmd(ctx, target, url, file_path, max_chunks, include_cdn, save, insecure, timeout):
+def js_cmd(
+    ctx, target, url, file_path, max_chunks, include_cdn, save, insecure, timeout
+):
     """Extract API routes, GraphQL queries, parameters, secrets, and webpack chunks from JavaScript."""
     from ..js_analyzer import analyze_local_js, analyze_target_js
     from ..render import md_js
@@ -131,7 +131,9 @@ def js_cmd(ctx, target, url, file_path, max_chunks, include_cdn, save, insecure,
     help="Request timeout in seconds",
 )
 @click.pass_context
-def apis_cmd(ctx, target, url, file_path, max_chunks, include_cdn, save, insecure, timeout):
+def apis_cmd(
+    ctx, target, url, file_path, max_chunks, include_cdn, save, insecure, timeout
+):
     """Alias for JavaScript API and endpoint extraction."""
     ctx.invoke(
         js_cmd,

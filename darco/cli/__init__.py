@@ -12,8 +12,6 @@ Layout:
 Public surface (used by tests / entry points): ``cli``, ``main``.
 """
 
-from ._group import cli, main
-
 # Importing the command modules registers every @cli.command on the group.
 from . import (  # noqa: F401
     cmd_auth,
@@ -29,14 +27,15 @@ from . import (  # noqa: F401
     cmd_send,
     cmd_sqli,
     cmd_template,
-    cmd_traversal,
     cmd_transport,
+    cmd_traversal,
     cmd_waf_bypass,
     cmd_xss,
 )
+from ._context import _find_workspace  # noqa: F401
+from ._group import cli, main
 
 # Backwards-compatible re-exports (tests reach into these).
 from ._output import _table_from_json  # noqa: F401
-from ._context import _find_workspace  # noqa: F401
 
 __all__ = ["cli", "main"]

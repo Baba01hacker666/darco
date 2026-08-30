@@ -147,7 +147,9 @@ def load_plugin_file(path: str | Path) -> list[ScanPlugin]:
     """Import a single ``*.py`` plugin file and return newly loaded plugins."""
     p = Path(path).resolve()
     before = set(_REGISTRY)
-    mod_name = f"_darco_ext_plugin_{p.stem.replace('-', '_')}_{abs(hash(str(p))) % 10000}"
+    mod_name = (
+        f"_darco_ext_plugin_{p.stem.replace('-', '_')}_{abs(hash(str(p))) % 10000}"
+    )
     spec = importlib.util.spec_from_file_location(mod_name, p)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load plugin file: {p}")
@@ -166,7 +168,9 @@ def load_plugin_file(path: str | Path) -> list[ScanPlugin]:
     return fresh
 
 
-def load_plugins_from_dir(dir_path: str | Path, recursive: bool = True) -> list[ScanPlugin]:
+def load_plugins_from_dir(
+    dir_path: str | Path, recursive: bool = True
+) -> list[ScanPlugin]:
     """Load every ``*.py`` plugin file from a directory (sorted, recursive)."""
     d = Path(dir_path)
     if not d.is_dir():
@@ -202,7 +206,7 @@ def reset_external_state() -> None:
 
 
 # Import built-in plugins so they register themselves.
-from . import timing, xml_inject  # noqa: F401,E402
+from . import timing, xml_inject  # noqa: F401
 
 __all__ = [
     "EXTERNAL_SOURCES",

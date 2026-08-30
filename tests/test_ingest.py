@@ -237,3 +237,56 @@ def test_curl_data_binary_always_raw_even_with_equals():
         '<?xml version="1.0" encoding="UTF-8"?><stockCheck><storeId>1</storeId></stockCheck>'
     )
     assert req.body_form == []
+
+
+def test_har_form_urlencoded_text_fallback():
+    har = {
+        "log": {
+            "entries": [
+                {
+                    "request": {
+                        "method": "POST",
+                        "url": "https://x.test/login",
+                        "headers": [],
+                        "queryString": [],
+                        "postData": {
+                            "mimeType": "application/x-www-form-urlencoded",
+                            "text": "username=admin&password=secret%20pass&csrf=xyz",
+                        },
+                    }
+                }
+            ]
+        }
+    }
+    reqs = parse_har(json.dumps(har))
+    assert len(reqs) == 1
+    req = reqs[0]
+    assert req.body_type == BodyType.FORM
+    pairs = {p.name: p.value for p in req.body_form}
+    assert pairs == {
+        "username": "admin",
+        "password": "secret pass",
+        "csrf": "xyz",
+    }
+
+
+def test_curl_autodetect_json_and_xml():
+    # JSON auto-detection from raw -d
+    req_json = parse_curl(
+        'curl -X POST http://h/api -d \'{"user":"alice","role":"admin"}\''
+    )
+    assert req_json.body_type == BodyType.JSON
+    assert req_json.body_json == {"user": "alice", "role": "admin"}
+    assert any(
+        h.name.lower() == "content-type" and "json" in h.value for h in req_json.headers
+    )
+
+    # XML auto-detection from raw -d
+    req_xml = parse_curl(
+        "curl -X POST http://h/soap -d '<soap:Envelope><user>1</user></soap:Envelope>'"
+    )
+    assert req_xml.body_type == BodyType.RAW
+    assert req_xml.body_raw == "<soap:Envelope><user>1</user></soap:Envelope>"
+    assert any(
+        h.name.lower() == "content-type" and "xml" in h.value for h in req_xml.headers
+    )

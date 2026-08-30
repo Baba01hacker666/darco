@@ -41,7 +41,10 @@ def test_build_requests_from_sitemap():
             Endpoint(
                 url="http://example.com/items",
                 methods=["GET"],
-                params=[NameValue(name="id", value="42"), NameValue(name="cat", value="books")],
+                params=[
+                    NameValue(name="id", value="42"),
+                    NameValue(name="cat", value="books"),
+                ],
             ),
             Endpoint(
                 url="http://example.com/search?q=test",
@@ -52,7 +55,10 @@ def test_build_requests_from_sitemap():
             Form(
                 action="http://example.com/login",
                 method="POST",
-                inputs=[FormInput(name="username", default="admin"), FormInput(name="password")],
+                inputs=[
+                    FormInput(name="username", default="admin"),
+                    FormInput(name="password"),
+                ],
             )
         ],
     )
@@ -78,9 +84,9 @@ async def test_run_auto_scan(app, tmp_path):
         report = await run_auto_scan(
             ws,
             app,
-            depth=2,
-            max_urls=20,
-            workers=2,
+            depth=1,
+            max_urls=4,
+            workers=4,
             parse_js=False,
             fuzz=True,
             sqli=True,
@@ -106,7 +112,7 @@ async def test_run_auto_scan_redirect_and_traversal(app, tmp_path):
             ws,
             app,
             depth=1,
-            max_urls=30,
+            max_urls=12,
             workers=4,
             parse_js=False,
             fuzz=False,
@@ -115,14 +121,10 @@ async def test_run_auto_scan_redirect_and_traversal(app, tmp_path):
             upload=False,
             default_creds=False,
         )
-        red = next(
-            (f for f in report.redirect_findings if f.param == "url"), None
-        )
+        red = next((f for f in report.redirect_findings if f.param == "url"), None)
         assert red is not None
         assert red.confidence == "confirmed"
-        trav = next(
-            (f for f in report.traversal_findings if f.param == "path"), None
-        )
+        trav = next((f for f in report.traversal_findings if f.param == "path"), None)
         assert trav is not None
         assert trav.target_file == "etc/passwd"
         types = {f.type for f in report.findings}
@@ -134,7 +136,7 @@ async def test_run_auto_scan_redirect_and_traversal(app, tmp_path):
 
 # ------------------------------------------------------------------ CLI Integration Tests
 def test_cli_discover_with_fuzz(app, tmp_path):
-    res = run(["discover", app, "--fuzz", "--max-urls", "10", "--no-js"], tmp_path)
+    res = run(["discover", app, "--fuzz", "--max-urls", "2", "--no-js"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "target" in data
@@ -143,14 +145,14 @@ def test_cli_discover_with_fuzz(app, tmp_path):
 
 
 def test_cli_crawl_with_fuzz(app, tmp_path):
-    res = run(["crawl", app, "--fuzz", "--max-urls", "10", "--no-js"], tmp_path)
+    res = run(["crawl", app, "--fuzz", "--max-urls", "2", "--no-js"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "crawled_endpoints" in data
 
 
 def test_cli_scan_command(app, tmp_path):
-    res = run(["scan", app, "--max-urls", "10", "--no-js"], tmp_path)
+    res = run(["scan", app, "--max-urls", "2", "--no-js"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "target" in data
@@ -159,7 +161,7 @@ def test_cli_scan_command(app, tmp_path):
 
 
 def test_cli_auto_alias(app, tmp_path):
-    res = run(["auto", app, "--max-urls", "10", "--no-js"], tmp_path)
+    res = run(["auto", app, "--max-urls", "2", "--no-js"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "target" in data

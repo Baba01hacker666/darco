@@ -10,16 +10,14 @@ import click
 from ..configfile import DarcoConfig
 from ..errors import DarcoError
 from ..models import to_json
-
-from ._group import cli
 from ._context import _find_workspace, _one_shot_session
+from ._group import cli
 from ._oneshot import (
     _apply_send_mutations,
     _build_oneshot,
 )
 from ._output import _echo_json, _emit
 from ._rawio import _raw_response
-
 
 
 # ------------------------------------------------------------------ send (+ on-the-fly -u mode)
@@ -146,7 +144,7 @@ def send_cmd(
             click.echo(_raw_response(response))
             return
         if do_fuzz:
-            from ..fuzz import run_fuzz
+            from ..fuzz_v2 import run_fuzz
 
             cfg = (ctx.obj or {}).get("config") or DarcoConfig.empty()
             fres = run_fuzz(
@@ -274,7 +272,7 @@ def send_cmd(
 
         output["diff"] = diff_responses(other.response, record.response)
     if do_fuzz:
-        from ..fuzz import run_fuzz
+        from ..fuzz_v2 import run_fuzz
 
         cfg_darco: DarcoConfig = (ctx.obj or {}).get("config") or DarcoConfig.empty()
         fres = run_fuzz(
@@ -288,6 +286,7 @@ def send_cmd(
         click.echo(_raw_response(record.response))
     else:
         _emit(ctx, output, md_send)
+
 
 # ------------------------------------------------------------------ diff
 @cli.command("diff")
@@ -332,6 +331,7 @@ def analyze_cmd(ctx, record_id, save):
     _emit(
         ctx, {"id": record_id, "findings": [to_json(f) for f in findings]}, md_analyze
     )
+
 
 # ------------------------------------------------------------------ repeat
 @cli.command("repeat")

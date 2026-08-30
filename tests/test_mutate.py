@@ -152,3 +152,51 @@ def test_modify_file(tmp_path):
     assert [o.op for o in ops] == ["set_header", "strip_session"]
     with pytest.raises(DarcoError):
         parse_mutation_ops({"modify_file": str(tmp_path / "missing.json")})
+
+
+def test_json_body_mutations():
+    req = Request(
+        method="POST",
+        url="http://t.test/api/user",
+        body_type=BodyType.JSON,
+        body_json={"is_admin": False, "role": "viewer", "count": 1, "status": "active"},
+    )
+    # Flip boolean in JSON
+    req2, _ = apply_mutations(req, [Mutation("flip_param", name="is_admin")])
+    assert req2.body_json["is_admin"] is True
+
+    # Set existing string & int in JSON
+    req3, _ = apply_mutations(
+        req2,
+        [
+            Mutation("set_param", name="role", value="admin"),
+            Mutation("set_param", name="count", value="5"),
+        ],
+    )
+    assert req3.body_json["role"] == "admin"
+    assert req3.body_json["count"] == 5
+
+    # Unset param in JSON
+    req4, _ = apply_mutations(req3, [Mutation("unset_param", name="status")])
+    assert "status" not in req4.body_json
+    assert "role" in req4.body_json
+
+
+def test_strip_session_clears_cookies_and_auth_headers():
+    req = Request(
+        method="GET",
+        url="http://t.test/protected",
+        headers=[
+            NameValue(name="Authorization", value="Bearer secret"),
+            NameValue(name="X-Api-Key", value="key123"),
+            NameValue(name="Accept", value="application/json"),
+        ],
+    )
+    req.cookies = [NameValue(name="session", value="sess123")]
+    req2, _ = apply_mutations(req, [Mutation("strip_session")])
+    assert req2.session_stripped is True
+    assert req2.cookies == []
+    header_names = {h.name.lower() for h in req2.headers}
+    assert "authorization" not in header_names
+    assert "x-api-key" not in header_names
+    assert "accept" in header_names

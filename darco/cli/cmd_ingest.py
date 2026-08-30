@@ -10,11 +10,9 @@ import click
 
 from ..models import HistoryRecord, Request, to_json
 from ..workspace import Workspace
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ ingest

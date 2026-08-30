@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-
 import click
 
 from ..errors import DarcoError
 from ..models import to_json
-
-from ._group import cli
 from ._context import _find_workspace
+from ._group import cli
 from ._oneshot import (
     _resolve_base_request,
 )
 from ._output import _emit
-
 
 
 # ------------------------------------------------------------------ open redirect testing
@@ -63,8 +60,19 @@ from ._output import _emit
 )
 @click.pass_context
 def redirect_cmd(
-    ctx, target, url, from_id, param, headers, cookies, method, data, cli_form,
-    save, include_state, insecure,
+    ctx,
+    target,
+    url,
+    from_id,
+    param,
+    headers,
+    cookies,
+    method,
+    data,
+    cli_form,
+    save,
+    include_state,
+    insecure,
 ):
     """Open redirect audit: probes redirect-prone parameters with off-site canaries and classifies the redirect mechanism."""
     from ..models import Cookie, Finding, NameValue
@@ -139,9 +147,7 @@ def redirect_cmd(
                     Finding(
                         id=f"redirect-{r.param}-{r.redirect_type}",
                         type=f"open_redirect_{r.redirect_type}",
-                        severity=(
-                            "high" if r.confidence == "confirmed" else "medium"
-                        ),
+                        severity=("high" if r.confidence == "confirmed" else "medium"),
                         location=f"{base_req.method} {base_req.url} ({r.param})",
                         evidence=r.evidence,
                         suggestion=r.suggestion,
@@ -167,8 +173,19 @@ def redirect_cmd(
 @click.option("--insecure", is_flag=True, default=False)
 @click.pass_context
 def open_redirect_cmd(
-    ctx, target, url, from_id, param, headers, cookies, method, data, cli_form,
-    save, include_state, insecure,
+    ctx,
+    target,
+    url,
+    from_id,
+    param,
+    headers,
+    cookies,
+    method,
+    data,
+    cli_form,
+    save,
+    include_state,
+    insecure,
 ):
     """Alias for the open redirect audit."""
     ctx.invoke(

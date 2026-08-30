@@ -320,15 +320,41 @@ def parse_curl(command: str | list[str], *, source: str = "curl") -> Request:
                 # '=' but is a raw body, not a form).
                 body_type = BodyType.RAW
                 body_raw = joined
+                if joined.lstrip().startswith(("<", "<?xml")):
+                    _ensure_content_type(headers, "application/xml")
+                elif joined.lstrip().startswith(("{", "[")):
+                    try:
+                        body_json = _json.loads(joined)
+                        body_type = BodyType.JSON
+                        _ensure_content_type(headers, "application/json")
+                    except (_json.JSONDecodeError, ValueError):
+                        pass
             else:
-                pairs = parse_qsl(joined, keep_blank_values=True)
-                if joined and all("=" in p for p in joined.split("&")):
-                    body_type = BodyType.FORM
-                    body_form = [NameValue(name=k, value=v) for k, v in pairs]
-                else:
+                if joined.lstrip().startswith(("{", "[")):
+                    try:
+                        body_json = _json.loads(joined)
+                        body_type = BodyType.JSON
+                        _ensure_content_type(headers, "application/json")
+                    except (_json.JSONDecodeError, ValueError):
+                        body_type = BodyType.RAW
+                        body_raw = joined
+                elif joined.lstrip().startswith(("<", "<?xml")):
                     body_type = BodyType.RAW
                     body_raw = joined
-            _ensure_content_type(headers, "application/x-www-form-urlencoded")
+                    _ensure_content_type(headers, "application/xml")
+                else:
+                    pairs = parse_qsl(joined, keep_blank_values=True)
+                    if joined and all("=" in p for p in joined.split("&")):
+                        body_type = BodyType.FORM
+                        body_form = [NameValue(name=k, value=v) for k, v in pairs]
+                        _ensure_content_type(
+                            headers, "application/x-www-form-urlencoded"
+                        )
+                    else:
+                        body_type = BodyType.RAW
+                        body_raw = joined
+            if not any(h.name.lower() == "content-type" for h in headers):
+                _ensure_content_type(headers, "application/x-www-form-urlencoded")
 
     return Request(
         method=method,

@@ -2,37 +2,39 @@
 
 import json
 import subprocess
-import tempfile
 import threading
 
-import pytest
 from click.testing import CliRunner
 
 from darco.cli import cli
-from darco.models import BodyType, Cookie, NameValue, Request, Response, SessionState
+from darco.models import BodyType, NameValue, Request, Response
 
 
 # ------------------------------------------------------------------ type inference
 def test_v2_infers_numeric():
     from darco.fuzz_v2 import _infer_type
+
     assert _infer_type("id", "5") == "numeric"
     assert _infer_type("user_id", "100") == "numeric"
 
 
 def test_v2_infers_boolean():
     from darco.fuzz_v2 import _infer_type
+
     assert _infer_type("debug", "true") == "boolean"
     assert _infer_type("is_admin", "false") == "boolean"
 
 
 def test_v2_infers_email():
     from darco.fuzz_v2 import _infer_type
+
     assert _infer_type("email", "a@b.com") == "email"
     assert _infer_type("username", "root@localhost") == "email"
 
 
 def test_v2_infers_filename_and_path():
     from darco.fuzz_v2 import _infer_type
+
     assert _infer_type("file", "shell.php") == "filename"
     assert _infer_type("path", "../../etc/passwd") == "path"
     assert _infer_type("url", "http://x/") == "url"
@@ -42,7 +44,9 @@ def test_v2_infers_filename_and_path():
 def test_v2_build_variants_numeric_gets_boundaries_not_xss():
     from darco.fuzz_v2 import build_variants
 
-    req = Request(method="GET", url="http://t/u", params=[NameValue(name="id", value="5")])
+    req = Request(
+        method="GET", url="http://t/u", params=[NameValue(name="id", value="5")]
+    )
     labels = [lbl for lbl, _, _ in build_variants(req)]
     assert any(lbl.startswith("boundary:id=") for lbl in labels)
     assert any(lbl.startswith("type-confuse:id=") for lbl in labels)
@@ -54,7 +58,9 @@ def test_v2_build_variants_numeric_gets_boundaries_not_xss():
 def test_v2_build_variants_string_gets_injection_probes():
     from darco.fuzz_v2 import build_variants
 
-    req = Request(method="GET", url="http://t/u", params=[NameValue(name="q", value="x")])
+    req = Request(
+        method="GET", url="http://t/u", params=[NameValue(name="q", value="x")]
+    )
     labels = [lbl for lbl, _, _ in build_variants(req)]
     assert any(lbl.startswith("sql:q") for lbl in labels)
     assert any(lbl.startswith("xss:q") for lbl in labels)
@@ -75,8 +81,8 @@ def test_v2_build_variants_filename_gets_upload_probes():
 
 
 def test_v2_variants_not_larger_than_v1():
-    from darco.fuzz_v2 import build_variants
     from darco.fuzz import build_variants as build_v1
+    from darco.fuzz_v2 import build_variants
 
     req = Request(
         method="GET",
@@ -98,7 +104,9 @@ def test_v2_variants_not_larger_than_v1():
 def test_v2_classify_semantic_multi_signal():
     from darco.fuzz_v2 import _classify
 
-    base = Response(status_code=200, body="<html>ok</html>", body_len=15, url="http://t")
+    base = Response(
+        status_code=200, body="<html>ok</html>", body_len=15, url="http://t"
+    )
     resp = Response(
         status_code=500,
         body="DB Error: You have an error in your SQL syntax near 'x'",
@@ -156,7 +164,9 @@ def test_v2_classify_new_header_surface():
 def test_v2_classify_entropy_delta_caught():
     from darco.fuzz_v2 import _classify
 
-    base = Response(status_code=200, body="aaaaaaaaaaaaaaaaaaaa", body_len=20, url="http://t")
+    base = Response(
+        status_code=200, body="aaaaaaaaaaaaaaaaaaaa", body_len=20, url="http://t"
+    )
     resp = Response(
         status_code=200,
         body="the quick brown fox jumps over the lazy dog near the river bank",

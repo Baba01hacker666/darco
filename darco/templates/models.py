@@ -19,7 +19,9 @@ class TemplateInfo(DarcoModel):
 
 
 class TemplateMatcher(DarcoModel):
-    type: str = "word"  # native: word, regex, status, size, dsl; more via custom registry
+    type: str = (
+        "word"  # native: word, regex, status, size, dsl; more via custom registry
+    )
     part: str = "body"  # "body", "header", "all", "status", "response"
     condition: str = "or"  # "or", "and"
     negative: bool = False

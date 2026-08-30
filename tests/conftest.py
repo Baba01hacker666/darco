@@ -151,8 +151,7 @@ const ws = new WebSocket('/ws/events');""",
             action = "/post/comment" if path == "/post" else "/safe-post/comment"
             rendered = "".join(
                 # Vulnerable page echoes raw; safe page HTML-escapes.
-                (c if path == "/post" else html.escape(c))
-                + "<br>"
+                (c if path == "/post" else html.escape(c)) + "<br>"
                 for c in store.get(pid, [])
             )
             self._send(
@@ -212,7 +211,9 @@ const ws = new WebSocket('/ws/events');""",
                         ctype="text/plain",
                     )
             else:
-                self._send(200, "file listing: report.pdf notes.txt", ctype="text/plain")
+                self._send(
+                    200, "file listing: report.pdf notes.txt", ctype="text/plain"
+                )
         elif path == "/csrf":
             self._send(
                 200,

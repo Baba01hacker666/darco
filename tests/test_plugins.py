@@ -73,13 +73,13 @@ def test_scan_sqli_dispatches_plugin_hooks(monkeypatch):
         name = "_test_dummy"
         description = "test"
 
-        def collect_params(self, request, include_state_fields=False, param_filter=None):
+        def collect_params(
+            self, request, include_state_fields=False, param_filter=None
+        ):
             calls["collect"] += 1
             return []
 
-        def after_param(
-            self, request, session, ptype, pname, oval, baseline, result
-        ):
+        def after_param(self, request, session, ptype, pname, oval, baseline, result):
             calls["after"].append((ptype, pname))
 
         def after_scan(self, request, session, result):
@@ -136,7 +136,7 @@ def test_xml_probes_behavioral(monkeypatch):
     from darco.xmlinject import probe_xml_parsing
 
     req = _xml_req("http://app.test")
-    baseline = Response(status_code=200, body="{\"stock\": 853}", body_len=16)
+    baseline = Response(status_code=200, body='{"stock": 853}', body_len=16)
 
     def mock_send(r, session):
         body = r.body_raw
@@ -153,9 +153,7 @@ def test_xml_probes_behavioral(monkeypatch):
 
     monkeypatch.setattr("darco.xmlinject.send", mock_send)
 
-    probe = probe_xml_parsing(
-        req, SessionState(), "storeId", "1", baseline=baseline
-    )
+    probe = probe_xml_parsing(req, SessionState(), "storeId", "1", baseline=baseline)
     assert probe is not None
     assert probe.decodes_entities
     assert probe.parses_xml
@@ -213,9 +211,7 @@ def test_xml_encoded_string_param(monkeypatch):
     )
 
     def decode(body):
-        return _re.sub(
-            r"&#x([0-9A-Fa-f]+);", lambda m: chr(int(m.group(1), 16)), body
-        )
+        return _re.sub(r"&#x([0-9A-Fa-f]+);", lambda m: chr(int(m.group(1), 16)), body)
 
     def mock_send(r, session):
         raw = r.body_raw
@@ -223,9 +219,7 @@ def test_xml_encoded_string_param(monkeypatch):
         if "&#x" in raw:
             if " OR 1=1" in val:
                 body = (
-                    "<html>"
-                    + "".join(f"<li>{i}</li>" for i in range(200))
-                    + "</html>"
+                    "<html>" + "".join(f"<li>{i}</li>" for i in range(200)) + "</html>"
                 )
                 return Response(status_code=200, body=body, body_len=len(body))
             if "AND '1'='2" in val:
@@ -296,9 +290,7 @@ def test_cli_sql_xml_encoded_flow(app, tmp_path):
 
 def test_cli_sql_skip_plugin(app, tmp_path):
     _ingest_xml_stock(app, tmp_path)
-    res = run(
-        ["sql", "--from", "0001", "--skip-plugin", "xml_inject"], tmp_path
-    )
+    res = run(["sql", "--from", "0001", "--skip-plugin", "xml_inject"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert not any(
@@ -317,7 +309,7 @@ def test_cli_sql_only_plugin_unknown_name(app, tmp_path):
 
 
 # ------------------------------------------------------- external plugin files
-_EXT_PLUGIN_SRC = '''
+_EXT_PLUGIN_SRC = """
 import hashlib
 
 from darco.plugins import ScanPlugin, register_plugin
@@ -336,11 +328,11 @@ class ShaPrefixPlugin(ScanPlugin):
 
     def template_matcher_types(self):
         return {"shaprefix": match_shaprefix}
-'''
+"""
 
 
 def test_load_external_plugin_dir(tmp_path):
-    from darco.plugins import EXTERNAL_SOURCES, _REGISTRY
+    from darco.plugins import _REGISTRY, EXTERNAL_SOURCES
     from darco.templates.custom import registered_matcher_types
 
     pdir = tmp_path / "myplugins"

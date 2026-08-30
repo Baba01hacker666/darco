@@ -5,11 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 from ..errors import DarcoError
 from ..models import SessionState
 from ..workspace import Workspace, default_workspace_name
-
 
 
 # ------------------------------------------------------------------ workspace resolution

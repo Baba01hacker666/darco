@@ -206,9 +206,7 @@ def _classify(
         elif not resp_body:
             ratio = 0.0
         else:
-            ratio = SequenceMatcher(
-                None, base_body[:4000], resp_body[:4000]
-            ).ratio()
+            ratio = SequenceMatcher(None, base_body[:4000], resp_body[:4000]).ratio()
         if ratio < 0.85:
             out["anomaly"] = "body_changed"
             out["detail"] = (

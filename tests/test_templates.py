@@ -231,7 +231,20 @@ def test_cli_template_list(tmp_path):
 
 
 def test_cli_template_new(tmp_path):
-    res = run(["template", "new", "test-auth-check", "--name", "Test Auth", "--severity", "high", "--word", "forbidden"], tmp_path)
+    res = run(
+        [
+            "template",
+            "new",
+            "test-auth-check",
+            "--name",
+            "Test Auth",
+            "--severity",
+            "high",
+            "--word",
+            "forbidden",
+        ],
+        tmp_path,
+    )
     assert res.returncode == 0, res.stderr
     assert "test-auth-check" in res.stdout
     assert "Test Auth" in res.stdout
@@ -239,7 +252,8 @@ def test_cli_template_new(tmp_path):
 
 def test_cli_template_run_with_custom_template(app, tmp_path):
     tmpl_file = tmp_path / "app-login-check.yaml"
-    tmpl_file.write_text("""
+    tmpl_file.write_text(
+        """
 id: test-login-check
 info:
   name: App Login Page Check
@@ -258,9 +272,13 @@ requests:
           - "username"
           - "password"
         condition: and
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
-    res = run(["template", "run", "-u", f"{app}/", "-t", str(tmpl_file), "--save"], tmp_path)
+    res = run(
+        ["template", "run", "-u", f"{app}/", "-t", str(tmpl_file), "--save"], tmp_path
+    )
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert data["templates_loaded"] == 1
@@ -278,13 +296,16 @@ def test_cli_template_run_builtin_by_name(app, tmp_path):
 
 
 # ------------------------------------------------------------------ custom types / dsl
-from darco.templates.custom import (  # noqa: E402
+from darco.templates.custom import (
     get_matcher_type,
     register_matcher_type,
     registered_matcher_types,
 )
-from darco.templates.dsl import evaluate_dsl  # noqa: E402
-from darco.templates.engine import _evaluate_extractor, _evaluate_matcher  # noqa: E402,E501
+from darco.templates.dsl import evaluate_dsl
+from darco.templates.engine import (
+    _evaluate_extractor,
+    _evaluate_matcher,
+)
 
 
 def _resp(status=200, text="", headers=None):
@@ -434,7 +455,8 @@ requests:
     ok2, items2 = _evaluate_matcher(m, _resp(200, "x"), elapsed_ms=1_500_000.0)
     assert ok2 and items2 and "ms" in items2[0]
 
-    fast = load_template_from_string("""
+    fast = (
+        load_template_from_string("""
 id: fast
 info:
   name: f
@@ -443,7 +465,10 @@ requests:
     matchers:
       - type: delay
         min_ms: 0
-""").requests[0].matchers[0]
+""")
+        .requests[0]
+        .matchers[0]
+    )
     ok3, items3 = _evaluate_matcher(fast, _resp(200, "x"), elapsed_ms=12.4)
     assert ok3 and items3 and "ms" in items3[0]
 
@@ -529,7 +554,7 @@ requests:
         finally:
             await client.aclose()
 
-    results, findings, count = asyncio.run(_run())
+    results, _findings, count = asyncio.run(_run())
     assert count == 2
     assert any("secret=hunter2!" in u for u in seen_urls)
     # internal extractor value stays out of public output
@@ -539,8 +564,14 @@ requests:
 def test_cli_template_run_extra_vars(app, tmp_path):
     res = run(
         [
-            "template", "run", "-u", f"{app}/", "-t", "git-config",
-            "--var", "team=pentest",
+            "template",
+            "run",
+            "-u",
+            f"{app}/",
+            "-t",
+            "git-config",
+            "--var",
+            "team=pentest",
         ],
         tmp_path,
     )

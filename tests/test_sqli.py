@@ -176,9 +176,7 @@ def test_sqli_skips_framework_state_fields_by_default(monkeypatch):
         method="POST",
         url="http://app.test/login",
         headers=[
-            NameValue(
-                name="Content-Type", value="application/x-www-form-urlencoded"
-            )
+            NameValue(name="Content-Type", value="application/x-www-form-urlencoded")
         ],
         body_type=BodyType.FORM,
         body_form=[
@@ -208,9 +206,7 @@ def test_sqli_include_framework_state_fields(monkeypatch):
         method="POST",
         url="http://app.test/login",
         headers=[
-            NameValue(
-                name="Content-Type", value="application/x-www-form-urlencoded"
-            )
+            NameValue(name="Content-Type", value="application/x-www-form-urlencoded")
         ],
         body_type=BodyType.FORM,
         body_form=[
@@ -228,9 +224,7 @@ def test_sqli_include_framework_state_fields(monkeypatch):
         return baseline_resp
 
     monkeypatch.setattr("darco.sqli._send", mock_send)
-    result = scan_sqli(
-        req, baseline_response=baseline_resp, include_state_fields=True
-    )
+    result = scan_sqli(req, baseline_response=baseline_resp, include_state_fields=True)
     assert "__VIEWSTATE" in result.tested_params
     assert "tbUsername" in result.tested_params
 
@@ -240,9 +234,7 @@ def test_sqli_state_validation_error_not_flagged(monkeypatch):
         method="POST",
         url="http://app.test/login",
         headers=[
-            NameValue(
-                name="Content-Type", value="application/x-www-form-urlencoded"
-            )
+            NameValue(name="Content-Type", value="application/x-www-form-urlencoded")
         ],
         body_type=BodyType.FORM,
         body_form=[NameValue(name="__VIEWSTATE", value="x")],
@@ -264,9 +256,7 @@ def test_sqli_state_validation_error_not_flagged(monkeypatch):
         return baseline_resp
 
     monkeypatch.setattr("darco.sqli._send", mock_send)
-    result = scan_sqli(
-        req, baseline_response=baseline_resp, include_state_fields=True
-    )
+    result = scan_sqli(req, baseline_response=baseline_resp, include_state_fields=True)
     assert not any(
         v.param == "__VIEWSTATE"
         and v.injection_type in ("status_anomaly", "quote_balancing")
@@ -340,9 +330,7 @@ def test_sqli_or_logic_requires_negative_control(monkeypatch):
 
     monkeypatch.setattr("darco.sqli._send", mock_send)
     result = scan_sqli(req, baseline_response=baseline_resp)
-    assert not any(
-        v.injection_type == "sql_logic" for v in result.vulnerabilities
-    )
+    assert not any(v.injection_type == "sql_logic" for v in result.vulnerabilities)
 
 
 # ------------------------------------------------------------------ CLI Integration Tests
@@ -380,9 +368,7 @@ def test_cli_sql_include_state_flag(app, tmp_path):
     data = json.loads(res.stdout)
     assert "__VIEWSTATE" not in data["tested_params"]
 
-    res = run(
-        ["sql", f"{app}/echo?__VIEWSTATE=1&q=x", "--include-state"], tmp_path
-    )
+    res = run(["sql", f"{app}/echo?__VIEWSTATE=1&q=x", "--include-state"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "__VIEWSTATE" in data["tested_params"]
@@ -402,3 +388,41 @@ def test_cli_sqli_alias(app, tmp_path):
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "param" in data["tested_params"]
+
+
+def test_sqli_finding_reproduction_curl(monkeypatch):
+    req = Request(
+        method="GET",
+        url="http://app.test/item",
+        params=[NameValue(name="id", value="1")],
+        headers=[NameValue(name="Authorization", value="Bearer secret-token")],
+    )
+
+    baseline_resp = Response(
+        status_code=200,
+        body="<html><body>Item 1 Details</body></html>",
+        body_len=40,
+    )
+
+    def mock_send(r, session):
+        for p in r.params:
+            if p.name == "id" and "'" in p.value:
+                return Response(
+                    status_code=500,
+                    body="You have an error in your SQL syntax near '' at line 1",
+                    body_len=55,
+                )
+        return baseline_resp
+
+    monkeypatch.setattr("darco.sqli._send", mock_send)
+
+    result = scan_sqli(req, baseline_response=baseline_resp)
+    assert len(result.vulnerabilities) >= 1
+    vuln = result.vulnerabilities[0]
+    assert vuln.curl
+    assert "curl -i" in vuln.curl
+    assert (
+        "http://app.test/item?id=1%27" in vuln.curl
+        or "http://app.test/item?id=1'" in vuln.curl
+    )
+    assert "Authorization: Bearer secret-token" in vuln.curl

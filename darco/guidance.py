@@ -198,7 +198,9 @@ def fuzz_notes(data: dict) -> dict:
         next_steps.append(
             "Mostly content-diff anomalies — compare the flagged variant responses side by side."
         )
-    next_steps.append("Re-run targeted checks with `darco sql` / `darco xss` on the flagged params.")
+    next_steps.append(
+        "Re-run targeted checks with `darco sql` / `darco xss` on the flagged params."
+    )
     return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
 
 
@@ -231,7 +233,9 @@ def scan_notes(data: dict) -> dict:
     if len(high_med) > 6:
         highlights.append(f"…and {len(high_med) - 6} more high/medium signal(s).")
     if not highlights:
-        highlights.append("No high/medium signals — mostly informational findings (headers, tech fingerprints).")
+        highlights.append(
+            "No high/medium signals — mostly informational findings (headers, tech fingerprints)."
+        )
 
     next_steps = [
         "Manually verify each high/medium finding before writing it up.",
@@ -254,9 +258,10 @@ def detect_notes(data: dict) -> dict:
     target = data.get("target") or ""
     techs = data.get("technologies") or []
     wafs = data.get("wafs") or []
-    tech_str = ", ".join(
-        f"{t.get('name')} {t.get('version') or ''}".strip() for t in techs
-    ) or "_unknown_"
+    tech_str = (
+        ", ".join(f"{t.get('name')} {t.get('version') or ''}".strip() for t in techs)
+        or "_unknown_"
+    )
     waf_str = ", ".join(w.get("name") for w in wafs) or "_none detected_"
     verdict = (
         f"Fingerprinted `{target}`: {tech_str}. WAF/CDN: {waf_str}. "
@@ -289,8 +294,7 @@ def passive_notes(data: dict) -> dict:
         f"{len(findings)} posture finding(s) logged."
     )
     highlights = [
-        f"`{f.get('type')}` — {str(f.get('evidence'))[:90]}"
-        for f in findings[:6]
+        f"`{f.get('type')}` — {str(f.get('evidence'))[:90]}" for f in findings[:6]
     ] or ["No notable posture findings."]
     next_steps = [
         "Missing HSTS/CSP/X-Frame-Options → harden response headers.",
@@ -311,9 +315,7 @@ def discover_notes(data: dict) -> dict:
     )
     highlights = []
     eps = data.get("endpoints") or []
-    with_params = [
-        e for e in eps if e.get("params")
-    ][:5]
+    with_params = [e for e in eps if e.get("params")][:5]
     for e in with_params:
         highlights.append(
             f"`{e.get('url')}` takes parameters: "
@@ -402,6 +404,182 @@ def login_notes(data: dict) -> dict:
     return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
 
 
+# ------------------------------------------------------------------ Traversal
+def traversal_notes(data: dict) -> dict:
+    target = data.get("target") or ""
+    findings = data.get("findings") or []
+    tested = data.get("tested_params") or []
+    if not findings:
+        return {
+            "verdict": f"No directory traversal vulnerabilities found on `{target}` across {len(tested)} tested parameter(s).",
+            "highlights": [
+                f"Tested: {', '.join(f'`{p}`' for p in tested) or '_none_'}."
+            ],
+            "next_steps": [
+                "Test other endpoints handling file downloads, templates, or image rendering.",
+                "Try custom encoding (URL-double encoding, null bytes, nested `....//`).",
+            ],
+        }
+    verdict = (
+        f"Found {len(findings)} path traversal vulnerability(ies) on `{target}`! "
+        "High-severity arbitrary file read."
+    )
+    highlights = [
+        f"`HIGH` — `{f.get('param')}` allows reading `{f.get('target_file')}` via `{f.get('payload')}`"
+        for f in findings[:6]
+    ]
+    next_steps = [
+        "Replay the traversal payload to dump `/etc/passwd`, app configuration, or source code.",
+        "Fix: resolve paths against an allowlisted directory and reject directory separators (`..`, `/`, `\\`).",
+    ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
+# ------------------------------------------------------------------ Redirect
+def redirect_notes(data: dict) -> dict:
+    target = data.get("target") or ""
+    findings = data.get("findings") or []
+    tested = data.get("tested_params") or []
+    if not findings:
+        return {
+            "verdict": f"No open redirect vulnerabilities found on `{target}` across {len(tested)} tested parameter(s).",
+            "highlights": [
+                f"Tested: {', '.join(f'`{p}`' for p in tested) or '_none_'}."
+            ],
+            "next_steps": [
+                "Inspect OAuth/SSO callback parameters and login redirect flows.",
+                "Check for regex-bypass techniques (e.g. `//evil.com`, `https://target.com.evil.com`).",
+            ],
+        }
+    verdict = f"Found {len(findings)} open redirect vulnerability(ies) on `{target}`."
+    highlights = [
+        f"`HIGH` — `{f.get('param')}` redirects off-site via `{f.get('redirect_type')}` ({f.get('location') or f.get('evidence')})"
+        for f in findings[:6]
+    ]
+    next_steps = [
+        "Verify off-site redirection in a browser; check if authorization tokens or session cookies are leaked in the referer.",
+        "Fix: enforce strict relative-path redirects or validate against a domain allowlist.",
+    ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
+# ------------------------------------------------------------------ Origin
+def origin_notes(data: dict) -> dict:
+    target = data.get("target") or ""
+    direct = data.get("direct_ips") or []
+    hosts = data.get("hosts") or []
+    likely_origins = [h for h in hosts if h.get("likely_origin")]
+    if likely_origins:
+        verdict = f"Discovered {len(likely_origins)} likely origin IP candidate(s) behind Cloudflare/CDN for `{target}`."
+        highlights = [
+            f"Candidate: `{h.get('host')}` -> IPs: `{', '.join(h.get('ips') or [])}` (source: {h.get('source')})"
+            for h in likely_origins[:6]
+        ]
+        next_steps = [
+            "Send requests directly to the origin IP with `-H 'Host: target.com'` to bypass CDN/WAF rules.",
+            "Use `darco waf-bypass --origin-ip <IP>` to auto-generate bypass curl commands.",
+        ]
+    else:
+        verdict = f"Enumerated {len(hosts)} host(s) and {len(direct)} direct IP(s) for `{target}`."
+        highlights = [
+            f"Direct A records: {', '.join(f'`{ip}`' for ip in direct) or 'none'}."
+        ]
+        next_steps = [
+            "Check historical DNS records and certificate transparency logs with `darco passive`.",
+        ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
+# ------------------------------------------------------------------ Transport
+def transport_notes(data: dict) -> dict:
+    target = data.get("target") or ""
+    h2 = data.get("http2") or {}
+    smug = data.get("smuggling") or {}
+    tls = data.get("tls") or {}
+    verdict = f"Transport analysis for `{target}` complete."
+    highlights = []
+    if h2.get("http2"):
+        highlights.append(
+            f"HTTP/2: **Supported** (ALPN negotiated {h2.get('negotiated')})"
+        )
+    if smug.get("vulnerable"):
+        highlights.append(
+            f"Request Smuggling: **POTENTIALLY VULNERABLE** ({smug.get('evidence')})"
+        )
+    if tls.get("ja3_hash"):
+        highlights.append(
+            f"TLS JA3: `{tls.get('ja3_hash')}` ({tls.get('tls_version')})"
+        )
+    next_steps = [
+        "If HTTP/2 is enabled, probe for HTTP/2 request smuggling (H2.CL / H2.TE) and desync.",
+        "Check for request header smuggling and CRLF injection on front-end reverse proxies.",
+    ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
+# ------------------------------------------------------------------ WAF Bypass
+def waf_bypass_notes(data: dict) -> dict:
+    waf = data.get("waf") or "Detected WAF"
+    techs = data.get("techniques") or []
+    verdict = f"Generated {len(techs)} tailored WAF bypass technique(s) for {waf}."
+    highlights = [f"`{t.get('name')}`: {t.get('description')}" for t in techs[:6]]
+    next_steps = [
+        "Replay the suggested curl commands with altered headers or payloads.",
+        "If origin IP is known, test direct origin bypass with Host header spoofing.",
+    ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
+# ------------------------------------------------------------------ Admin Panels
+def admin_notes(data: dict) -> dict:
+    target = data.get("target") or ""
+    panels = data.get("panels_found") or []
+    scanned = data.get("scanned_paths") or 0
+    if not panels:
+        return {
+            "verdict": f"Scanned {scanned} common administrative paths on `{target}` — no exposed portals detected.",
+            "highlights": ["No admin portals discovered at standard routes."],
+            "next_steps": [
+                "Check JS bundles (`darco js`) and sitemaps for obfuscated administrative routes."
+            ],
+        }
+    exposed = [p for p in panels if p.get("auth_type") == "exposed_dashboard"]
+    verdict = f"Discovered {len(panels)} admin portal(s) on `{target}` ({len(exposed)} exposed without auth!)."
+    highlights = [
+        f"`{p.get('auth_type', '').upper()}` — `{p.get('url')}` ({p.get('title') or p.get('evidence')})"
+        for p in panels[:6]
+    ]
+    next_steps = [
+        "Immediately verify exposed dashboards; test administrative credential defaults on login portals.",
+        "Fix: require strong MFA and restrict administrative endpoints to trusted IP ranges.",
+    ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
+# ------------------------------------------------------------------ JS Analyzer
+def js_notes(data: dict) -> dict:
+    target = data.get("target") or ""
+    endpoints = data.get("endpoints") or []
+    secrets = data.get("secrets") or []
+    chunks = data.get("chunks_discovered") or []
+    verdict = (
+        f"Analyzed JavaScript assets for `{target}`: {len(endpoints)} API route(s), "
+        f"{len(secrets)} potential secret(s), {len(chunks)} Webpack chunk(s)."
+    )
+    highlights = []
+    for s in secrets[:4]:
+        highlights.append(
+            f"`SECRET` [{s.get('confidence')}] — `{s.get('rule')}` in {s.get('file')}"
+        )
+    for ep in endpoints[:4]:
+        highlights.append(f"`ROUTE` — `{ep.get('method', 'GET')}` `{ep.get('url')}`")
+    next_steps = [
+        "Test discovered API routes with `darco send` and `darco sql`.",
+        "Rotate and invalidate any leaked API keys or credentials immediately.",
+    ]
+    return {"verdict": verdict, "highlights": highlights, "next_steps": next_steps}
+
+
 # ------------------------------------------------------------------ dispatcher
 def build_notes(data: dict) -> dict | None:
     """Attach a human-friendly debrief block when the data is recognizable."""
@@ -413,11 +591,35 @@ def build_notes(data: dict) -> dict | None:
         return login_notes(data)
     if "reflections" in data and "tested_params" in data:
         return xss_notes(data)
+    if "tested_params" in data and any(
+        "target_file" in str(f) for f in data.get("findings", [])
+    ):
+        return traversal_notes(data)
+    if "tested_params" in data and any(
+        "redirect_type" in str(f) for f in data.get("findings", [])
+    ):
+        return redirect_notes(data)
+    if "direct_ips" in data and "hosts" in data:
+        return origin_notes(data)
+    if "http2" in data and ("smuggling" in data or "tls" in data):
+        return transport_notes(data)
+    if "techniques" in data and "technique_count" in data:
+        return waf_bypass_notes(data)
+    if "panels_found" in data and "scanned_paths" in data:
+        return admin_notes(data)
+    if "chunks_discovered" in data and "secrets" in data:
+        return js_notes(data)
     if "total_variants" in data or ("results" in data and "anomalies" in data):
         return fuzz_notes(data)
     if any(
         k in data
-        for k in ("sqli_vulnerabilities", "xss_reflections", "upload_findings")
+        for k in (
+            "sqli_vulnerabilities",
+            "xss_reflections",
+            "upload_findings",
+            "redirect_findings",
+            "traversal_findings",
+        )
     ):
         return scan_notes(data)
     if "dns_records" in data and "security_headers" in data:
