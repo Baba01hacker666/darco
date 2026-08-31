@@ -25,11 +25,16 @@ from .models import (
     TemplateInfo,
     TemplateMatcher,
     TemplateMatchResult,
+    TemplatePoC,
     TemplateRequest,
     TemplateScanReport,
 )
 from .scaffold import (
     generate_template_scaffold,
+)
+from .verify import (
+    extract_credentials,
+    verify_template_match,
 )
 
 __all__ = [
@@ -38,10 +43,12 @@ __all__ = [
     "TemplateInfo",
     "TemplateMatchResult",
     "TemplateMatcher",
+    "TemplatePoC",
     "TemplateRequest",
     "TemplateScanReport",
     "evaluate_dsl",
     "execute_template_on_target",
+    "extract_credentials",
     "generate_template_scaffold",
     "get_extractor_type",
     "get_matcher_type",
@@ -54,4 +61,5 @@ __all__ = [
     "registered_extractor_types",
     "registered_matcher_types",
     "run_template_scan",
+    "verify_template_match",
 ]

@@ -51,6 +51,12 @@ def template_group():
 @click.option("--save", is_flag=True, help="Save template findings to workspace")
 @click.option("--insecure", is_flag=True, default=False)
 @click.option(
+    "--poc/--no-poc",
+    default=True,
+    help="Smart POC verification: prove real access on matched templates "
+    "(exploit steps / auto-login with leaked creds). Default: enabled.",
+)
+@click.option(
     "--var",
     "cli_vars",
     multiple=True,
@@ -75,6 +81,7 @@ def template_run_cmd(
     timeout,
     save,
     insecure,
+    poc,
     cli_vars,
     plugin_dirs,
 ):
@@ -157,6 +164,7 @@ def template_run_cmd(
             workers=workers,
             timeout=timeout,
             verify=not insecure,
+            verify_poc=poc,
             extra_variables=extra_vars or None,
         )
     )

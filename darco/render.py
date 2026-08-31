@@ -1493,9 +1493,18 @@ def md_template_report(d: dict) -> str:
         curl = m.get("curl", "")
         rem = m.get("remediation", "")
         ext = m.get("extracted_data") or {}
+        verified = m.get("verified", False)
+        verif = m.get("verification", "")
+        access = m.get("access") or []
 
         lines.append(f"### **[{sev}]** `{t_id}` — {t_name}")
         lines.append(f"- **Matched URL**: `{url}`")
+        badge = "**VERIFIED**" if verified else ("*unverified*" if m.get("verification") else "")
+        lines.append(f"- **Verification**: {badge or 'n/a'}")
+        if verif:
+            lines.append(f"  - {verif}")
+        if access:
+            lines.append(f"  - **Access gained**: {', '.join(access)}")
         lines.append(f"- **Evidence**: {ev}")
         if ext:
             ext_str = ", ".join(f"`{k}`: {v}" for k, v in ext.items())

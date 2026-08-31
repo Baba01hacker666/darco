@@ -587,3 +587,242 @@ def test_cli_template_run_extra_vars(app, tmp_path):
         tmp_path,
     )
     assert bad.returncode != 0
+
+
+# ------------------------------------------------------------------ smart POC verification
+def test_poc_block_parsed_from_yaml():
+    yaml_text = """
+id: poc-loader-test
+info:
+  name: POC Loader
+  severity: high
+requests:
+  - path: ["{{BaseURL}}/"]
+    matchers:
+      - type: word
+        words: ["secret"]
+poc:
+  verify_access: true
+  auto_login: true
+  requests:
+    - method: POST
+      path: ["{{BaseURL}}/exploit"]
+      matchers:
+        - type: status
+          status: [200]
+"""
+    tmpl = load_template_from_string(yaml_text)
+    assert tmpl.poc is not None
+    assert tmpl.poc.verify_access is True
+    assert tmpl.poc.auto_login is True
+    assert len(tmpl.poc.requests) == 1
+    assert tmpl.poc.requests[0].method == "POST"
+
+    # requests and poc use independent request lists
+    assert len(tmpl.requests) == 1
+    assert len(tmpl.poc.requests) == 1
+
+
+def test_extract_credentials_heuristics():
+    from darco.templates.verify import extract_credentials
+
+    text = (
+        "APP_ENV=prod\n"
+        "DB_PASSWORD=supersecret123\n"
+        "DB_USER=app_user\n"
+        "API_KEY=ak_123456\n"
+        "DATABASE_URL=postgres://user:pass@db:5432/app\n"
+    )
+    creds = extract_credentials(text)
+    pairs = {(k, v) for k, v in creds}
+    assert ("password", "supersecret123") in pairs
+    assert ("api_key", "ak_123456") in pairs
+    assert ("database_url", "postgres://user:pass@db:5432/app") in pairs
+
+
+def _poc_mock_transport(fail_poc=False):
+    class T(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            u = str(request.url)
+            if ".env" in u:
+                return httpx.Response(200, text="DB_PASSWORD=supersecret123\n")
+            if "debug" in u:
+                if fail_poc:
+                    return httpx.Response(403, text="forbidden")
+                return httpx.Response(200, text="debug enabled=true\nSECRET=abc\n")
+            return httpx.Response(404, text="nf")
+
+    return T()
+
+
+_POC_YAML = """
+id: env-poc-check
+info:
+  name: Env POC Check
+  severity: critical
+requests:
+  - method: GET
+    path: ["{{BaseURL}}/.env"]
+    matchers:
+      - type: word
+        words: ["DB_PASSWORD"]
+poc:
+  verify_access: true
+  requests:
+    - method: GET
+      path: ["{{BaseURL}}/debug?enabled=true"]
+      matchers:
+        - type: word
+          words: ["SECRET"]
+"""
+
+
+def test_poc_exploit_steps_verify_access():
+    tmpl = load_template_from_string(_POC_YAML)
+
+    async def _run_transport(transport):
+        client = httpx.AsyncClient(transport=transport)
+        try:
+            results, findings, count = await execute_template_on_target(
+                tmpl, "http://mock.test", client=client
+            )
+            return results, findings, count
+        finally:
+            await client.aclose()
+
+    results, _, _ = asyncio.run(_run_transport(_poc_mock_transport()))
+    assert len(results) == 1
+    assert results[0].verified is True
+    assert "succeeded" in results[0].verification
+    assert len(results[0].access) == 1
+
+    results, _, _ = asyncio.run(
+        _run_transport(_poc_mock_transport(fail_poc=True))
+    )
+    assert len(results) == 1
+    assert results[0].verified is False
+    assert "failed" in results[0].verification
+    assert results[0].access == []
+
+
+def test_no_poc_flag_skips_verification():
+    tmpl = load_template_from_string(_POC_YAML)
+
+    async def _run():
+        client = httpx.AsyncClient(transport=_poc_mock_transport())
+        try:
+            results, _, _ = await execute_template_on_target(
+                tmpl, "http://mock.test", client=client, verify_poc=False
+            )
+            return results
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(_run())
+    assert results[0].verified is False
+    assert results[0].verification == ""
+
+
+def test_auto_login_verifies_leaked_creds_against_app(app):
+    """Leaked DB password reused against the app's login form proves access."""
+    from darco.templates.verify import verify_template_match
+
+    yaml_text = """
+id: auto-login-test
+info:
+  name: Auto Login
+  severity: critical
+requests:
+  - method: GET
+    path: ["{{BaseURL}}/debug?enabled=true"]
+    matchers:
+      - type: word
+        words: ["SECRET"]
+poc:
+  verify_access: true
+  auto_login: true
+"""
+    tmpl = load_template_from_string(yaml_text)
+
+    async def _run():
+        client = httpx.AsyncClient()
+        try:
+            # Simulate a matched response that leaked the app password.
+            text = "DB_PASSWORD=hunter2\n"
+            verified, detail, access = await verify_template_match(
+                tmpl.poc,
+                target=app,
+                client=client,
+                variables={},
+                extracted={},
+                text=text,
+            )
+            return verified, detail, access
+        finally:
+            await client.aclose()
+
+    verified, detail, access = asyncio.run(_run())
+    assert verified is True
+    assert "succeeded" in detail
+    assert access
+
+    async def _run_bad():
+        client = httpx.AsyncClient()
+        try:
+            verified, detail, access = await verify_template_match(
+                tmpl.poc,
+                target=app,
+                client=client,
+                variables={},
+                extracted={},
+                text="SECRET=definitely-not-the-password\n",
+            )
+            return verified, detail, access
+        finally:
+            await client.aclose()
+
+    bad_verified, _, bad_access = asyncio.run(_run_bad())
+    assert bad_verified is False
+    assert bad_access == []
+
+
+def test_cli_template_run_poc_flag(app, tmp_path):
+    tmpl_file = tmp_path / "poc-login.yaml"
+    tmpl_file.write_text(
+        """
+id: poc-cli-check
+info:
+  name: POC CLI
+  severity: critical
+requests:
+  - method: GET
+    path: ["{{BaseURL}}/debug?enabled=true"]
+    matchers:
+      - type: word
+        words: ["SECRET"]
+poc:
+  verify_access: true
+  auto_login: true
+""",
+        encoding="utf-8",
+    )
+
+    res = run(
+        ["template", "run", "-u", f"{app}/", "-t", str(tmpl_file)], tmp_path
+    )
+    assert res.returncode == 0, res.stderr
+    data = json.loads(res.stdout)
+    # The leaked SECRET (super-secret-value) is rejected by the login form,
+    # so the match is present but not verified.
+    assert len(data["matched_results"]) == 1
+    assert data["matched_results"][0]["verified"] is False
+
+    no_poc = run(
+        ["template", "run", "-u", f"{app}/", "-t", str(tmpl_file), "--no-poc"],
+        tmp_path,
+    )
+    assert no_poc.returncode == 0, no_poc.stderr
+    nd = json.loads(no_poc.stdout)
+    assert nd["matched_results"][0]["verified"] is False
+    assert nd["matched_results"][0]["verification"] == ""
+

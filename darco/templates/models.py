@@ -64,10 +64,31 @@ class TemplateRequest(DarcoModel):
     stop_at_first_match: bool = False
 
 
+class TemplatePoC(DarcoModel):
+    """Proof-of-concept verification block attached to a template.
+
+    When verification is enabled, a matched template goes beyond detection and
+    actively tries to demonstrate real access. Two mutually-exclusive styles:
+
+    - ``requests``: explicit exploit steps that must ALL match to confirm access.
+    - ``auto_login``: leaked credential values extracted from the response are
+      automatically tried against a discovered login form to prove access.
+
+    ``verify_access`` acts as a global "smart" switch: when true (the default
+    when any POC block exists), verification runs automatically on a match.
+    """
+
+    verify_access: bool = True  # enable active verification when this POC matches
+    requests: list[TemplateRequest] = Field(default_factory=list)
+    auto_login: bool = False  # reuse leaked creds against a discovered login form
+    fails_if_no_credentials: bool = False  # treat a match with no creds as unverified
+
+
 class AttackTemplate(DarcoModel):
     id: str
     info: TemplateInfo
     requests: list[TemplateRequest] = Field(default_factory=list)
+    poc: TemplatePoC | None = None
     variables: dict[str, str] = Field(default_factory=dict)
     raw_path: str = ""
 
@@ -83,6 +104,9 @@ class TemplateMatchResult(DarcoModel):
     curl: str = ""
     evidence: str = ""
     remediation: str = ""
+    verified: bool = False  # active POC / auto-login verification succeeded
+    verification: str = ""  # human-readable detail of the verification
+    access: list[str] = Field(default_factory=list)  # proof of access gained
 
 
 class TemplateScanReport(DarcoModel):

@@ -21,6 +21,7 @@ from .models import (
     TemplateMatchResult,
     TemplateScanReport,
 )
+from .verify import verify_template_match
 
 USER_AGENT = "darco/0.1 (security template runner)"
 
@@ -263,6 +264,7 @@ async def execute_template_on_target(
     client: httpx.AsyncClient | None = None,
     timeout: float = 10.0,
     verify: bool = True,
+    verify_poc: bool = True,
     extra_variables: dict[str, str] | None = None,
 ) -> tuple[list[TemplateMatchResult], list[Finding], int]:
     results: list[TemplateMatchResult] = []
@@ -355,6 +357,33 @@ async def execute_template_on_target(
 
                     curl_cmd = f'curl -k -i -X {req.method} "{req_url}"'
 
+                    # Smart POC verification: prove real access on top of detection.
+                    verified = False
+                    verification_detail = ""
+                    access_list: list[str] = []
+                    if verify_poc and template.poc is not None and template.poc.verify_access:
+                        try:
+                            verified, verification_detail, access_list = (
+                                await verify_template_match(
+                                    template.poc,
+                                    target=target,
+                                    client=async_client,
+                                    variables=vars_dict,
+                                    extracted=extracted,
+                                    text=resp.text or "",
+                                )
+                            )
+                        except Exception:  # noqa: BLE001
+                            verified = False
+                            verification_detail = "verification error"
+                            access_list = []
+                        if verified:
+                            evidence += f" [VERIFIED] {verification_detail}"
+                        if access_list:
+                            evidence += (
+                                " [Access: " + "; ".join(access_list) + "]"
+                            )
+
                     match_res = TemplateMatchResult(
                         template_id=template.id,
                         template_name=template.info.name,
@@ -366,17 +395,29 @@ async def execute_template_on_target(
                         curl=curl_cmd,
                         evidence=evidence,
                         remediation=template.info.remediation,
+                        verified=verified,
+                        verification=verification_detail,
+                        access=access_list,
                     )
                     results.append(match_res)
 
                     norm_tid = template.id.replace("-", "_")
+                    verif_note = (
+                        f" VERIFIED: {verification_detail}" if verified else ""
+                    )
                     findings.append(
                         Finding(
                             id=f"template-{template.id}-{hash(req_url) & 0xFFFF:04x}",
                             type=f"template_{norm_tid}",
-                            severity=template.info.severity,
+                            severity=template.info.severity
+                            if verified
+                            else (
+                                "low"
+                                if template.poc is not None
+                                else template.info.severity
+                            ),
                             location=req_url,
-                            evidence=evidence,
+                            evidence=evidence + verif_note,
                             suggestion=template.info.remediation
                             or "Review the exposed asset or endpoint and apply security controls.",
                         )
@@ -400,6 +441,7 @@ async def run_template_scan(
     workers: int = 10,
     timeout: float = 10.0,
     verify: bool = True,
+    verify_poc: bool = True,
     extra_variables: dict[str, str] | None = None,
 ) -> TemplateScanReport:
     target_list = [targets] if isinstance(targets, str) else targets
@@ -426,6 +468,7 @@ async def run_template_scan(
                     client=client,
                     timeout=timeout,
                     verify=verify,
+                    verify_poc=verify_poc,
                     extra_variables=extra_variables,
                 )
                 total_requests += reqs

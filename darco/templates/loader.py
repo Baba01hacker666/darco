@@ -13,6 +13,7 @@ from .models import (
     TemplateExtractor,
     TemplateInfo,
     TemplateMatcher,
+    TemplatePoC,
     TemplateRequest,
 )
 
@@ -32,43 +33,8 @@ def _normalize_dict_keys(d: Any) -> Any:
     return d
 
 
-def load_template_from_string(content: str, path: str = "") -> AttackTemplate:
-    """Parse a template string in YAML or JSON format into an AttackTemplate model."""
-    try:
-        raw = yaml.safe_load(content)
-    except Exception as e:
-        raise DarcoError(f"Failed to parse template YAML/JSON {path}: {e}") from e
-
-    if not isinstance(raw, dict):
-        raise DarcoError(
-            f"Invalid template structure in {path}: expected a dictionary mapping"
-        )
-
-    norm = _normalize_dict_keys(raw)
-
-    t_id = norm.get("id") or (Path(path).stem if path else "untitled-template")
-    raw_info = norm.get("info") or {}
-    if not isinstance(raw_info, dict):
-        raw_info = {"name": str(raw_info)}
-
-    # Parse info block
-    info = TemplateInfo(
-        name=raw_info.get("name") or t_id,
-        author=raw_info.get("author", "darco"),
-        severity=(raw_info.get("severity") or "info").lower(),
-        description=raw_info.get("description", ""),
-        tags=[t.strip() for t in raw_info.get("tags", "").split(",") if t.strip()]
-        if isinstance(raw_info.get("tags"), str)
-        else raw_info.get("tags", []),
-        reference=raw_info.get("reference")
-        if isinstance(raw_info.get("reference"), list)
-        else ([raw_info.get("reference")] if raw_info.get("reference") else []),
-        remediation=raw_info.get("remediation", ""),
-        metadata=raw_info.get("metadata", {}),
-    )
-
-    # Support both "requests" and "http" top-level sections (Nuclei compatibility)
-    raw_requests = norm.get("requests") or norm.get("http") or []
+def _parse_requests(raw_requests: Any) -> list[TemplateRequest]:
+    """Parse a raw 'requests'/'http' block into TemplateRequest models."""
     if isinstance(raw_requests, dict):
         raw_requests = [raw_requests]
 
@@ -175,10 +141,67 @@ def load_template_from_string(content: str, path: str = "") -> AttackTemplate:
             )
         )
 
+    return requests
+
+
+def load_template_from_string(content: str, path: str = "") -> AttackTemplate:
+    """Parse a template string in YAML or JSON format into an AttackTemplate model."""
+    try:
+        raw = yaml.safe_load(content)
+    except Exception as e:
+        raise DarcoError(f"Failed to parse template YAML/JSON {path}: {e}") from e
+
+    if not isinstance(raw, dict):
+        raise DarcoError(
+            f"Invalid template structure in {path}: expected a dictionary mapping"
+        )
+
+    norm = _normalize_dict_keys(raw)
+
+    t_id = norm.get("id") or (Path(path).stem if path else "untitled-template")
+    raw_info = norm.get("info") or {}
+    if not isinstance(raw_info, dict):
+        raw_info = {"name": str(raw_info)}
+
+    # Parse info block
+    info = TemplateInfo(
+        name=raw_info.get("name") or t_id,
+        author=raw_info.get("author", "darco"),
+        severity=(raw_info.get("severity") or "info").lower(),
+        description=raw_info.get("description", ""),
+        tags=[t.strip() for t in raw_info.get("tags", "").split(",") if t.strip()]
+        if isinstance(raw_info.get("tags"), str)
+        else raw_info.get("tags", []),
+        reference=raw_info.get("reference")
+        if isinstance(raw_info.get("reference"), list)
+        else ([raw_info.get("reference")] if raw_info.get("reference") else []),
+        remediation=raw_info.get("remediation", ""),
+        metadata=raw_info.get("metadata", {}),
+    )
+
+    # Support both "requests" and "http" top-level sections (Nuclei compatibility)
+    raw_requests = norm.get("requests") or norm.get("http") or []
+    requests = _parse_requests(raw_requests)
+
+    # Optional POC (proof-of-concept) verification block.
+    poc: TemplatePoC | None = None
+    raw_poc = norm.get("poc") or {}
+    if raw_poc and isinstance(raw_poc, dict):
+        poc_requests = _parse_requests(raw_poc.get("requests") or [])
+        poc = TemplatePoC(
+            verify_access=bool(raw_poc.get("verify_access", True)),
+            requests=poc_requests,
+            auto_login=bool(raw_poc.get("auto_login", False)),
+            fails_if_no_credentials=bool(
+                raw_poc.get("fails_if_no_credentials", False)
+            ),
+        )
+
     return AttackTemplate(
         id=t_id,
         info=info,
         requests=requests,
+        poc=poc,
         variables=norm.get("variables", {}),
         raw_path=str(path),
     )
