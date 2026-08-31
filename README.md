@@ -109,7 +109,7 @@ darco fuzz          # reads ./darco.toml
 | `darco scan <url>` / `darco auto <url>` | Full automated pipeline: crawl site, detect WAF/tech, find admin panels, audit login/upload/SQLi/XSS |
 | `darco crawl [url]` / `darco discover [url]` | Crawl & parse: endpoints, forms, emails, JS refs, robots, technologies, WAFs (add `--fuzz` to auto-audit) |
 | `darco admin [url]` / `darco admin-finder [url]` | Discover administrative consoles, portals, and dashboards with smart email credential testing |
-| `darco template run [url]` | Execute Nuclei-compatible attack/vulnerability scanning templates (with tag/severity filtering) |
+| `darco template run [url]` | Execute Nuclei-compatible attack/vulnerability scanning templates (with tag/severity filtering; smart `poc:` verification proves real access, `--no-poc` to disable) |
 | `darco template list [dir]` | List built-in or custom attack templates |
 | `darco template new <id>` | Scaffold/generate a new YAML attack template with custom matchers and extractors |
 | `darco sql [url\|id]` | SQL injection testing: syntax break (`'`), quote balancing (`''`), arithmetic (`2-1`), boolean differential, and OR-logic / hidden-data retrieval (`' OR 1=1--`) |

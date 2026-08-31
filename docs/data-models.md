@@ -150,7 +150,20 @@ command for manual verification).
 `target`, `templates_loaded`, `templates_executed`, `requests_sent`,
 `matched_results` — `list[TemplateMatchResult]` (`template_id`, `template_name`,
 `severity`, `matched_url`, `matcher_type`, `matched_words`, `extracted_data`,
-`curl`, `evidence`, `remediation`), `findings` (`list[Finding]`).
+`curl`, `evidence`, `remediation`, `verified`, `verification`, `access`),
+`findings` (`list[Finding]`).
+
+The engine's `Verified` fields capture **smart POC verification**:
+- `verified` (bool) — whether an active proof-of-concept proved real access.
+- `verification` (str) — human-readable detail of the verification outcome.
+- `access` (list[str]) — normalized listing of what access was demonstrated
+  (e.g. the exploit steps that succeeded, or `"logged in as 'admin' using leaked
+  credential"`).
+
+Templates may attach a `poc:` block (model `TemplatePoC`) with `verify_access`,
+`requests` (explicit exploit steps that must all match), `auto_login` (reuse
+leaked credential-like secrets against the discovered login form), and
+`fails_if_no_credentials`. See `docs/templates.md`.
 
 ## Debrief notes
 

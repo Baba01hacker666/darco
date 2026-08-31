@@ -108,6 +108,72 @@ Scan plugins can do the same via the `template_matcher_types()` /
 `delay` matcher), and external plugin directories loaded with
 `--plugin-dir` or `DARCO_PLUGIN_PATH` register automatically on load.
 
+### 5. Smart POC verification (`poc:`)
+
+Detection only proves *something looks off*. By default Darco's template engine
+additionally runs a **proof-of-concept** to prove *real access* — this is the
+"smart" mode and is **enabled by default**. Two styles are supported, and a
+matched template is marked `verified: true` only when access is actually
+demonstrated. Detection-only matches (that failed verification) are downgraded
+to `low` severity so confirmed findings stand out.
+
+#### Style A — explicit exploit steps
+
+Declare `poc.requests`; every step must match for the finding to be verified:
+
+```yaml
+requests:
+  - method: GET
+    path: ["{{BaseURL}}/.env"]
+    matchers:
+      - type: word
+        words: [DB_PASSWORD]
+poc:
+  verify_access: true
+  requests:
+    - method: POST
+      path: ["{{BaseURL}}/api/import"]
+      body: "token={{db_token}}"
+      matchers:
+        - type: status
+          status: [200]
+        - type: word
+          words: ["imported"]
+          condition: and
+```
+
+#### Style B — auto-login with leaked credentials
+
+Set `auto_login: true`. When the matched response leaks credential-like values
+(`DB_PASSWORD`, `API_KEY`, `SECRET_KEY`, `DATABASE_URL`, …), the engine
+automatically extracts them and reuses them against the target's discovered
+login form. If we land in an authenticated state (account redirect, logged-in
+markers, or a new session cookie vs. the failed-login baseline), the finding is
+verified and the gained access is recorded in the report.
+
+```yaml
+requests:
+  - method: GET
+    path: ["{{BaseURL}}/debug?enabled=true"]
+    matchers:
+      - type: word
+        words: ["SECRET"]
+poc:
+  verify_access: true
+  auto_login: true
+```
+
+`poc` keys:
+- `verify_access` (bool, default `true`): master switch for active verification.
+- `requests` (list): explicit exploit steps that must all match.
+- `auto_login` (bool, default `false`): reuse leaked credentials against a login form.
+- `fails_if_no_credentials` (bool): if no secrets are found to test, treat the
+  match as unverified (this is already the default behavior for `auto_login`).
+
+On each matched finding the engine sets `verified`, `verification` (detail),
+and `access` (list of access gained), e.g. `"logged in as 'admin' using leaked
+credential"`.
+
 ## CLI Commands
 
 ```bash
@@ -125,6 +191,9 @@ darco template run https://target.test --var team=pentest
 
 # Load plugins that contribute custom matcher/extractor types
 darco template run https://target.test --plugin-dir ./my-plugins/
+
+# Disable smart POC verification (detection-only)
+darco template run https://target.test --no-poc
 
 # List available templates
 darco template list
