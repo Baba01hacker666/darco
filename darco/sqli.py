@@ -147,6 +147,7 @@ def _build_repro_curl(
         parts.append(f"-X {mutated.method}")
 
     final_url = rebuild_url(mutated.url, mutated.params)
+
     def _sh_esc(s: str) -> str:
         return s.replace("'", "'\\''")
 
