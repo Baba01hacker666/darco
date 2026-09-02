@@ -376,8 +376,8 @@ def build_variants(
             for c in COMMAND_INJECTION:
                 add(f"cmdi:{p.name}", [Mutation("set_param", name=p.name, value=c)])
             if p.name.lower() in _LDAP_NAMES:
-                for l in LDAP_PROBES:
-                    add(f"ldap:{p.name}", [Mutation("set_param", name=p.name, value=l)])
+                for ldap_probe in LDAP_PROBES:
+                    add(f"ldap:{p.name}", [Mutation("set_param", name=p.name, value=ldap_probe)])
 
         else:  # generic
             for sq in SQL_PROBES[:2]:
