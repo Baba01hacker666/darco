@@ -91,7 +91,10 @@ def parse_xml_params(body: str) -> list[XmlParam]:
     if not body.startswith("<"):
         return []
     try:
-        root = ET.fromstring(body)
+        # Parsing user-supplied XML is intentional: this is the XML injection
+        # auditor — we must parse attacker-controlled bodies to detect the
+        # vulnerability. Caller controls input, not external entities.
+        root = ET.fromstring(body)  # nosec B314
     except ET.ParseError:
         return []
 

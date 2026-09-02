@@ -183,15 +183,15 @@ def _dig(records: str, host: str, resolver: str = "8.8.8.8") -> list[str]:
         )
     except (subprocess.SubprocessError, FileNotFoundError):
         return []
-    lines = [l.strip() for l in out.stdout.splitlines() if l.strip()]
+    lines = [line.strip() for line in out.stdout.splitlines() if line.strip()]
     # +short returns the CNAME first, then the A record(s); for A/AAAA we only
     # want IP addresses (CNAME lines contain letters/dots but not a clean IP).
     import re
 
     ip_re = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$|^[0-9a-f:]+$")
     if records in ("A", "AAAA"):
-        return [l.rstrip(".") for l in lines if ip_re.match(l)]
-    return [l.rstrip(".") for l in lines]
+        return [line.rstrip(".") for line in lines if ip_re.match(line)]
+    return [line.rstrip(".") for line in lines]
 
 
 def _root_domain(host: str) -> str:

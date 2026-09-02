@@ -110,7 +110,10 @@ def _xml_root(resp: httpx.Response):
     use natural document paths like ``/users/user`` regardless of nesting.
     """
     try:
-        doc = ET.fromstring(resp.text or "")
+        # Parsing response XML for xpath matching is intentional — this is the
+        # template xpath matcher. Response content is attacker-controlled in a
+        # scan context; no external entities are involved.
+        doc = ET.fromstring(resp.text or "")  # nosec B314
     except ET.ParseError:
         return None
     wrapper = ET.Element("__darco_root__")
