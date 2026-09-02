@@ -963,6 +963,7 @@ def md_scan(d: dict) -> str:
     lines.append(f"- **Open Redirects**: `{len(d.get('redirect_findings') or [])}`")
     lines.append(f"- **Path Traversals**: `{len(d.get('traversal_findings') or [])}`")
     lines.append(f"- **Stored XSS**: `{len(d.get('stored_xss_findings') or [])}`")
+    lines.append(f"- **CORS Misconfigs**: `{len(d.get('cors_findings') or [])}`")
     lines.append(
         f"- **Login Bypass Candidates**: `{len(d.get('login_bypasses') or [])}`"
     )
@@ -1142,6 +1143,31 @@ def md_scan(d: dict) -> str:
                 lines.append(f"- **Accessible Stored URL**: `{file_url}`")
             lines.append(f"- **Evidence**: {ev}")
             lines.append(f"- **Remediation**: {sugg}")
+            lines.append("")
+
+    # CORS Misconfiguration Findings
+    cors_findings = d.get("cors_findings") or []
+    if cors_findings:
+        lines.append(f"## 🌐 CORS Misconfigurations ({len(cors_findings)})")
+        lines.append("")
+        for c in cors_findings:
+            mtype = c.get("misconfig_type", "") if isinstance(c, dict) else getattr(c, "misconfig_type", "")
+            conf = (c.get("confidence", "") if isinstance(c, dict) else getattr(c, "confidence", "high"))
+            origin = (c.get("origin_tested", "") if isinstance(c, dict) else getattr(c, "origin_tested", ""))
+            allow_origin = (c.get("allow_origin") if isinstance(c, dict) else getattr(c, "allow_origin", None))
+            creds = (c.get("allow_credentials") if isinstance(c, dict) else getattr(c, "allow_credentials", False))
+            ev = (c.get("evidence", "") if isinstance(c, dict) else getattr(c, "evidence", ""))
+            sugg = (c.get("suggestion", "") if isinstance(c, dict) else getattr(c, "suggestion", ""))
+            curl_cmd = (c.get("curl", "") if isinstance(c, dict) else getattr(c, "curl", ""))
+            lines.append(f"### **[{conf.upper()}]** `{mtype}` — Origin: `{origin}`")
+            if allow_origin:
+                lines.append(f"- **Access-Control-Allow-Origin**: `{allow_origin}`")
+            if creds:
+                lines.append("- **Allow-Credentials**: `true` (dangerous with wildcard/reflected origin)")
+            lines.append(f"- **Evidence**: {ev}")
+            lines.append(f"- **Remediation**: {sugg}")
+            if curl_cmd:
+                lines.append(f"- **Repro**: `{curl_cmd}`")
             lines.append("")
 
     # Fuzzing Anomalies
