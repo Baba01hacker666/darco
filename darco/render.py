@@ -414,7 +414,7 @@ def md_transport(d: dict) -> str:
     else:
         lines.append(f"  - supported: `{'yes' if h2.get('http2') else 'no'}`")
         lines.append(f"  - negotiated: `{h2.get('negotiated', '?')}`")
-        if h2.get("setttings_frame_seen"):
+        if h2.get("settings_frame_seen"):
             lines.append("  - server SETTINGS frame observed")
         if h2.get("note"):
             lines.append(f"  - {h2['note']}")

@@ -121,7 +121,6 @@ def probe_http2(url: str, timeout: float = 8) -> dict:
             "http2": h2,
             "negotiated": negotiated,
             "settings_frame_seen": bool(srv_settings[:3] == b"\x00\x00\x00"),
-            "setttings_frame_seen": bool(srv_settings[:3] == b"\x00\x00\x00"),
             "note": "HTTP/2 supported"
             if h2
             else "HTTP/2 not negotiated (ALPN returned http/1.1)",
