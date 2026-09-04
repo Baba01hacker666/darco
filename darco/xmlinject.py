@@ -13,7 +13,7 @@ probes, then hands the sqli engine the encoded payload channel to exploit it.
 from __future__ import annotations
 
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405
 from difflib import SequenceMatcher
 
 import httpx

@@ -277,7 +277,7 @@ requests:
     )
 
     res = run(
-        ["template", "run", "-u", f"{app}/", "-t", str(tmpl_file), "--save"], tmp_path
+        ["template", "-u", f"{app}/", "-t", str(tmpl_file), "--save"], tmp_path
     )
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
@@ -288,7 +288,7 @@ requests:
 
 
 def test_cli_template_run_builtin_by_name(app, tmp_path):
-    res = run(["template", "run", "-u", f"{app}/", "-t", "git-config"], tmp_path)
+    res = run(["template", "-u", f"{app}/", "-t", "git-config"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert data["templates_loaded"] == 1
@@ -568,7 +568,6 @@ def test_cli_template_run_extra_vars(app, tmp_path):
     res = run(
         [
             "template",
-            "run",
             "-u",
             f"{app}/",
             "-t",
@@ -583,7 +582,7 @@ def test_cli_template_run_extra_vars(app, tmp_path):
     assert data["templates_loaded"] == 1
 
     bad = run(
-        ["template", "run", "-u", f"{app}/", "-t", "git-config", "--var", "NOEQUALS"],
+        ["template", "-u", f"{app}/", "-t", "git-config", "--var", "NOEQUALS"],
         tmp_path,
     )
     assert bad.returncode != 0
@@ -808,7 +807,7 @@ poc:
     )
 
     res = run(
-        ["template", "run", "-u", f"{app}/", "-t", str(tmpl_file)], tmp_path
+        ["template", "-u", f"{app}/", "-t", str(tmpl_file)], tmp_path
     )
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
@@ -818,11 +817,10 @@ poc:
     assert data["matched_results"][0]["verified"] is False
 
     no_poc = run(
-        ["template", "run", "-u", f"{app}/", "-t", str(tmpl_file), "--no-poc"],
+        ["template", "-u", f"{app}/", "-t", str(tmpl_file), "--no-poc"],
         tmp_path,
     )
     assert no_poc.returncode == 0, no_poc.stderr
     nd = json.loads(no_poc.stdout)
     assert nd["matched_results"][0]["verified"] is False
     assert nd["matched_results"][0]["verification"] == ""
-

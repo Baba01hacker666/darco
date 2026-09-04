@@ -1,0 +1,32 @@
+id: jwt-token-exposure
+info:
+  name: JWT Token Exposure in Response
+  author: darco
+  severity: high
+  description: Detects JSON Web Tokens (JWT) exposed in responses that could be used for session hijacking.
+  tags: jwt,token,exposure,credentials,authentication
+  remediation: Remove JWT tokens from responses. Store securely in httpOnly cookies.
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/user"
+      - "{{BaseURL}}/api/me"
+      - "{{BaseURL}}/api/profile"
+      - "{{BaseURL}}/api/auth"
+      - "{{BaseURL}}/api/login"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: regex
+        regex:
+          - "eyJ[a-zA-Z0-9_-]+\\.[a-zA-Z0-9_-]+\\.[a-zA-Z0-9_-]+"
+        part: body
+      - type: word
+        words:
+          - "authorization"
+          - "Bearer"
+        part: header
+        condition: or

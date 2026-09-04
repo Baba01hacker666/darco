@@ -152,7 +152,7 @@ def test_cli_discover_auto_workspace(app, tmp_path):
     result = run(["discover", app, "--depth", "1", "--max-urls", "5"], tmp_path)
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)
-    assert "endpoints" in data
+    assert "crawled_endpoints" in data
 
 
 def test_cli_ingest_preserves_header_value(tmp_path):
@@ -223,13 +223,13 @@ def test_cli_table_format_send(app, tmp_path):
 
 
 def test_cli_discover_and_scan_advanced_flags(app, tmp_path):
-    # Test discover with --redirect and --traversal flags
+    # Test discover with --no-redirect and --no-traversal flags
     res = run(
         [
             "discover",
             app,
-            "--redirect",
-            "--traversal",
+            "--no-redirect",
+            "--no-traversal",
             "--depth",
             "1",
             "--max-urls",

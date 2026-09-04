@@ -1,18 +1,21 @@
 id: phpinfo-exposure
 info:
-  name: PHPInfo Diagnostic Exposure
+  name: phpinfo() Exposure
   author: darco
-  severity: low
-  description: Detects publicly accessible phpinfo() diagnostic pages.
-  tags: php,phpinfo,info-leak
-  remediation: Remove phpinfo() diagnostic test files from production environments.
+  severity: medium
+  description: Detects exposed phpinfo() pages revealing PHP configuration, environment variables, and server details.
+  tags: php,exposure,config,info
+  remediation: Remove or restrict access to phpinfo() files. Never expose them in production.
 
 requests:
   - method: GET
     path:
       - "{{BaseURL}}/phpinfo.php"
       - "{{BaseURL}}/info.php"
+      - "{{BaseURL}}/phpinfo"
+      - "{{BaseURL}}/php/info"
       - "{{BaseURL}}/test.php"
+      - "{{BaseURL}}/pi.php"
     matchers-condition: and
     matchers:
       - type: status
@@ -20,7 +23,11 @@ requests:
           - 200
       - type: word
         words:
+          - "phpinfo()"
           - "PHP Version"
-          - "Configuration File (php.ini) Path"
+          - "System"
+          - "Build Date"
+          - "Server API"
+          - "PHP License"
         part: body
-        condition: and
+        condition: or

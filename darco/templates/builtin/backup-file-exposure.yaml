@@ -1,0 +1,59 @@
+id: backup-file-exposure
+info:
+  name: Backup File Exposure
+  author: darco
+  severity: high
+  description: Detects exposed backup files containing source code, credentials, or sensitive data.
+  tags: backup,exposure,config,source-code
+  remediation: Remove backup files from web-accessible directories. Block access via web server config.
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php.bak"
+      - "{{BaseURL}}/index.php.old"
+      - "{{BaseURL}}/index.php.swp"
+      - "{{BaseURL}}/index.php~"
+      - "{{BaseURL}}/index.bak"
+      - "{{BaseURL}}/index.old"
+      - "{{BaseURL}}/config.php.bak"
+      - "{{BaseURL}}/config.php.old"
+      - "{{BaseURL}}/config.php~"
+      - "{{BaseURL}}/wp-config.php.bak"
+      - "{{BaseURL}}/wp-config.php.old"
+      - "{{BaseURL}}/configuration.php.bak"
+      - "{{BaseURL}}/web.config.bak"
+      - "{{BaseURL}}/application.ini.bak"
+      - "{{BaseURL}}/settings.php.bak"
+      - "{{BaseURL}}/database.sql"
+      - "{{BaseURL}}/backup.sql"
+      - "{{BaseURL}}/db.sql"
+      - "{{BaseURL}}/site.zip"
+      - "{{BaseURL}}/backup.zip"
+      - "{{BaseURL}}/site.tar.gz"
+      - "{{BaseURL}}/backup.tar.gz"
+      - "{{BaseURL}}/www.zip"
+      - "{{BaseURL}}/www.tar.gz"
+      - "{{BaseURL}}/public_html.zip"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "PK"
+          - "<?php"
+          - "CREATE TABLE"
+          - "INSERT INTO"
+          - "define("
+          - "DB_PASSWORD"
+        part: body
+        condition: or
+      - type: word
+        words:
+          - "<!DOCTYPE"
+          - "<html"
+        part: body
+        condition: not
+        negative: true

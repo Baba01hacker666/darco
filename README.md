@@ -107,9 +107,9 @@ darco fuzz          # reads ./darco.toml
 | `darco <url>` / `darco -u <url>` | Direct request execution (curl / httpie style) |
 | `darco <id>` / `darco send [id\|url]` | Send or replay a request (with mutations like `--strip-session`, `--flip-param`) |
 | `darco scan <url>` / `darco auto <url>` | Full automated pipeline: crawl site, detect WAF/tech, find admin panels, audit login/upload/SQLi/XSS |
-| `darco crawl [url]` / `darco discover [url]` | Crawl & parse: endpoints, forms, emails, JS refs, robots, technologies, WAFs (add `--fuzz` to auto-audit) |
+| `darco crawl [url]` / `darco discover [url]` | Crawl & parse: endpoints, forms, emails, JS refs, robots, technologies, WAFs (auto-audits by default; `--no-sqli` etc. to disable) |
 | `darco admin [url]` / `darco admin-finder [url]` | Discover administrative consoles, portals, and dashboards with smart email credential testing |
-| `darco template run [url]` | Execute Nuclei-compatible attack/vulnerability scanning templates (with tag/severity filtering; smart `poc:` verification proves real access, `--no-poc` to disable) |
+| `darco template [url]` | Execute Nuclei-compatible attack/vulnerability scanning templates against a target (all run by default; pass template name to run specific; `--tags` to filter) |
 | `darco template list [dir]` | List built-in or custom attack templates |
 | `darco template new <id>` | Scaffold/generate a new YAML attack template with custom matchers and extractors |
 | `darco sql [url\|id]` | SQL injection testing: syntax break (`'`), quote balancing (`''`), arithmetic (`2-1`), boolean differential, and OR-logic / hidden-data retrieval (`' OR 1=1--`) |
@@ -173,7 +173,7 @@ auto = false                       # if true, `send` also runs fuzz variants
 concurrency = 6
 mutations = ["flip", "type_confusion", "boundary", "sql", "xss"]
 
-headers = ["X-API-Key: deadbeef"]  # base headers on every request
+headers = ["X-API-Key: ***  # base headers on every request
 follow_redirects = true
 timeout = 10.0
 insecure = false
@@ -189,6 +189,16 @@ insecure = false
   probes to `darco sql` via `collect_params` / `after_param` / `after_scan`
   hooks (`darco plugins` lists them, `--plugin` / `--skip-plugin` control them).
   See `docs/plugins.md`.
+- **EvilSpider integration**: the `evilspider` plugin wraps the `evilspider` CLI
+  as a subprocess, crawling the target and importing discovered endpoints, forms,
+  secrets, and security signals as Darco findings. Gracefully disables itself if
+  evilspider is not installed.
+- **Passive templates**: templates with `passive: true` fire during crawl (Step 4)
+  without sending extra requests — they analyze responses already fetched. Great
+  for detecting debug modes (Laravel, Django, WordPress), API key exposure, and
+  framework fingerprints.
+- **Proxy support**: `--proxy http://127.0.0.1:8080` routes all requests through
+  a proxy. Also respects `HTTP_PROXY` / `HTTPS_PROXY` env vars.
 - **XML WAF bypass**: the `xml_inject` plugin behaviorally confirms an endpoint
   parses XML (unclosed tag, numeric char ref, undefined entity, non-XML body)
   and tests entity-encoded SQLi — `&#x55;&#x4e;...` reaches SQL as `UNION` while

@@ -50,7 +50,7 @@ def test_registry_lists_builtins():
 
 def test_active_plugins_filters():
     assert [p.name for p in active_plugins(only=["xml_inject"])] == ["xml_inject"]
-    assert active_plugins(skip=["xml_inject", "timing"]) == []
+    assert active_plugins(skip=["xml_inject", "timing", "evilspider"]) == []
     assert active_plugins(only=["does_not_exist"]) == []
     assert "xml_inject" not in [p.name for p in active_plugins(skip=["xml_inject"])]
 

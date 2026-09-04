@@ -1,0 +1,38 @@
+id: nodejs-debug
+info:
+  name: Node.js / Express Debug Mode
+  author: darco
+  severity: high
+  description: Detects Node.js/Express applications with debug mode enabled, exposing stack traces and environment variables.
+  tags: nodejs,debug,javascript,exposure,configuration
+  remediation: Set NODE_ENV=production. Disable debug middleware in production.
+
+passive: true
+matchers-condition: or
+matchers:
+  - type: word
+    words:
+      - "Error: "
+      - "at Object."
+      - "at Module."
+      - "at require"
+      - "node_modules"
+      - "express"
+      - "Internal Server Error"
+      - "Cannot GET"
+      - "Cannot POST"
+    part: body
+    condition: or
+  - type: word
+    words:
+      - "express"
+      - "nodejs"
+    part: header
+    condition: or
+  - type: regex
+    regex:
+      - "Express [0-9]+\\.[0-9]+"
+      - "at\\s+[\\w]+\\s+\\([^)]+\\)"
+      - "node_modules/[^\"']+"
+    part: body
+    condition: or

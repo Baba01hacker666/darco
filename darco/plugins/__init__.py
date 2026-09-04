@@ -208,6 +208,12 @@ def reset_external_state() -> None:
 # Import built-in plugins so they register themselves.
 from . import timing, xml_inject  # noqa: F401
 
+# Only register evilspider plugin if evilspider CLI is installed
+try:
+    from . import evilspider_plugin  # noqa: F401
+except ImportError:
+    pass
+
 __all__ = [
     "EXTERNAL_SOURCES",
     "ScanPlugin",
