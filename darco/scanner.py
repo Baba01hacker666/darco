@@ -226,7 +226,7 @@ async def run_auto_scan(
                     session=session,
                     include_state_fields=include_state_fields,
                     only_plugins=[p.name for p in active],
-                    skip_plugins=[],
+                    skip_plugins=None,
                 )
                 for v in sqli_res.vulnerabilities:
                     report.sqli_vulnerabilities.append(v)
@@ -292,7 +292,7 @@ async def run_auto_scan(
                             severity=(
                                 "high" if rf.confidence == "confirmed" else "medium"
                             ),
-                            location=f"{req.method} {req.url}",
+                            location=f"{req.method} {req.url} ({rf.param})",
                             evidence=rf.evidence,
                             suggestion=rf.suggestion,
                         )
