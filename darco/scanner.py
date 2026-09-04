@@ -166,7 +166,7 @@ async def run_auto_scan(
 
     all_new_findings: list[Finding] = []
 
-    # Active plugins
+    # Active plugins - filtered by --plugin / --skip-plugin
     from .plugins import active_plugins, evilspider_plugin
     active = active_plugins(only=plugins, skip=skip_plugins)
     evilspider_plugin.configure(proxy=proxy)
@@ -225,6 +225,8 @@ async def run_auto_scan(
                     req,
                     session=session,
                     include_state_fields=include_state_fields,
+                    only_plugins=[p.name for p in active],
+                    skip_plugins=[],
                 )
                 for v in sqli_res.vulnerabilities:
                     report.sqli_vulnerabilities.append(v)
@@ -290,7 +292,7 @@ async def run_auto_scan(
                             severity=(
                                 "high" if rf.confidence == "confirmed" else "medium"
                             ),
-                            location=f"{req.method} {req.url} ({rf.param})",
+                            location=f"{req.method} {req.url}",
                             evidence=rf.evidence,
                             suggestion=rf.suggestion,
                         )
