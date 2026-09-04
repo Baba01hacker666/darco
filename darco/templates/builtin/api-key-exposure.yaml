@@ -1,0 +1,43 @@
+id: api-key-exposure
+info:
+  name: API Key / Token Exposure in Source
+  author: darco
+  severity: high
+  description: Detects API keys, tokens, and credentials exposed in JavaScript files, HTML source, or JSON responses.
+  tags: api,key,token,credentials,exposure,javascript
+  remediation: Never embed API keys in client-side code. Use server-side proxies for API calls.
+
+passive: true
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/index.php"
+      - "{{BaseURL}}/app.js"
+      - "{{BaseURL}}/bundle.js"
+      - "{{BaseURL}}/main.js"
+      - "{{BaseURL}}/assets/js/app.js"
+      - "{{BaseURL}}/static/js/main.js"
+      - "{{BaseURL}}/js/app.js"
+      - "{{BaseURL}}/scripts/app.js"
+    matchers-condition: or
+    matchers:
+      - type: regex
+        regex:
+          - "AIza[0-9A-Za-z\\-_]{35}"
+          - "sk-[a-zA-Z0-9]{48}"
+          - "AKIA[0-9A-Z]{16}"
+          - "ghp_[a-zA-Z0-9]{36}"
+          - "gho_[a-zA-Z0-9]{36}"
+          - "github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{56}"
+          - "xoxb-[0-9]{11}-[0-9]{11}-[a-zA-Z0-9]{24}"
+          - "xoxp-[0-9]{11}-[0-9]{11}-[a-zA-Z0-9]{24}"
+          - "sk_live_[0-9a-zA-Z]{24}"
+          - "pk_live_[0-9a-zA-Z]{24}"
+          - "SG\\.[a-zA-Z0-9_-]{22}\\.[a-zA-Z0-9_-]{43}"
+          - "key-[0-9a-zA-Z]{32}"
+          - "access_token=[^&\"']+"
+          - "api_key=[^&\"']+"
+          - "apikey=[^&\"']+"
+          - "secret=[^&\"']+"
+        part: body

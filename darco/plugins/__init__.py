@@ -206,7 +206,7 @@ def reset_external_state() -> None:
 
 
 # Import built-in plugins so they register themselves.
-from . import timing, xml_inject  # noqa: F401
+from . import evilspider_plugin, timing, xml_inject  # noqa: F401
 
 __all__ = [
     "EXTERNAL_SOURCES",

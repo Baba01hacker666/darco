@@ -204,6 +204,7 @@ def load_template_from_string(content: str, path: str = "") -> AttackTemplate:
         poc=poc,
         variables=norm.get("variables", {}),
         raw_path=str(path),
+        passive=bool(norm.get("passive", False)),
     )
 
 

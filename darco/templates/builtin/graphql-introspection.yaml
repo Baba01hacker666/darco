@@ -1,0 +1,33 @@
+id: graphql-introspection
+info:
+  name: GraphQL Introspection Enabled
+  author: darco
+  severity: medium
+  description: Detects GraphQL introspection queries that expose the entire schema including types, queries, mutations, and subscriptions.
+  tags: graphql,introspection,api,exposure
+  remediation: Disable introspection in production environments. Use environment-based feature flags.
+
+requests:
+  - method: POST
+    path:
+      - "{{BaseURL}}/graphql"
+      - "{{BaseURL}}/api/graphql"
+      - "{{BaseURL}}/graphql/api"
+      - "{{BaseURL}}/v1/graphql"
+      - "{{BaseURL}}/v2/graphql"
+    headers:
+      Content-Type: application/json
+    body: '{"query":"{ __schema { types { name fields { name args { name } } } } }"}'
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "__schema"
+          - "types"
+          - "queryType"
+          - "mutationType"
+        part: body
+        condition: or

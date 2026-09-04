@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 import click
@@ -69,6 +70,12 @@ class DarcoCLI(click.Group):
 )
 @click.option("--fuzz", "do_fuzz", is_flag=True, help="Auto-fuzz the target request")
 @click.option("--raw", is_flag=True, help="Print raw HTTP response")
+@click.option(
+    "--proxy",
+    "proxy",
+    default=None,
+    help="HTTP proxy URL (e.g. http://127.0.0.1:8080). Also uses HTTP_PROXY/HTTPS_PROXY env vars.",
+)
 @click.pass_context
 def cli(
     ctx,
@@ -83,10 +90,15 @@ def cli(
     as_json,
     do_fuzz,
     raw,
+    proxy,
 ):
     ctx.ensure_object(dict)
     ctx.obj["workspace_path"] = workspace
     ctx.obj["format"] = "json" if as_json else format
+    # Proxy: CLI flag wins, then env var
+    if not proxy:
+        proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("https_proxy") or os.environ.get("http_proxy")
+    ctx.obj["proxy"] = proxy
     cfg = load_config(config_path)
     # config file wins on defaults but CLI flags still override per-command
     if as_json is False and format == DEFAULT_FMT and cfg.format != DEFAULT_FMT:

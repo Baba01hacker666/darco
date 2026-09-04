@@ -132,6 +132,9 @@ async def run_auto_scan(
     include_state_fields: bool = False,
     timeout: float = 10.0,
     verify: bool = True,
+    plugins: list[str] | None = None,
+    skip_plugins: list[str] | None = None,
+    proxy: str | None = None,
 ) -> AutoScanReport:
     """Crawl a target, discover all endpoints/forms, and automatically fuzz & audit them."""
     # Step 1: Crawl & Discover Target
@@ -144,6 +147,7 @@ async def run_auto_scan(
         parse_js=parse_js,
         timeout=timeout,
         verify=verify,
+        proxy=proxy,
     )
 
     session = workspace.load_session()
@@ -161,6 +165,11 @@ async def run_auto_scan(
     )
 
     all_new_findings: list[Finding] = []
+
+    # Active plugins
+    from .plugins import active_plugins, evilspider_plugin
+    active = active_plugins(only=plugins, skip=skip_plugins)
+    evilspider_plugin.configure(proxy=proxy)
 
     # Step 2: Auto-Fuzz and Security Audit on each candidate request
     for req in candidate_requests:
@@ -558,6 +567,53 @@ async def run_auto_scan(
     if all_new_findings:
         report.findings.extend(all_new_findings)
         workspace.add_findings(all_new_findings)
+
+    # Step 4: Passive template scanning on key discovered URLs
+    # Passive templates don't send requests - they analyze responses we already have
+    from .templates import load_builtin_templates
+    from .templates.engine import _evaluate_matcher
+    passive_templates = [t for t in load_builtin_templates() if t.passive]
+    if passive_templates:
+        key_urls = set()
+        key_urls.add(url)
+        for ep in sitemap.endpoints[:20]:
+            if ep.status == 200:
+                key_urls.add(ep.url)
+        # Also include JS files discovered during crawl
+        for js_file in sitemap.js_files[:10]:
+            key_urls.add(js_file.url)
+
+        passive_findings = []
+        for target_url in key_urls:
+            try:
+                with httpx.Client(timeout=timeout, verify=verify, trust_env=False) as client:
+                    resp = client.get(target_url, headers={"User-Agent": "darco/0.1 (pentest assistant)"})
+                    for tmpl in passive_templates:
+                        for req in tmpl.requests:
+                            all_matched = True
+                            for m in req.matchers:
+                                m_ok, _ = _evaluate_matcher(m, resp, 0.0)
+                                if not m_ok:
+                                    all_matched = False
+                                    break
+                            if all_matched:
+                                passive_findings.append(
+                                    Finding(
+                                        id=f"passive-{tmpl.id}-{hash(target_url) & 0xFFFF:04x}",
+                                        type=f"passive_{tmpl.id.replace('-', '_')}",
+                                        severity=tmpl.info.severity,
+                                        location=target_url,
+                                        evidence=f"Passive match: {tmpl.info.name} on {target_url}",
+                                        suggestion=tmpl.info.remediation,
+                                    )
+                                )
+                                break
+            except (httpx.HTTPError, OSError, TimeoutError):
+                continue
+
+        if passive_findings:
+            report.findings.extend(passive_findings)
+            workspace.add_findings(passive_findings)
 
     return report
 

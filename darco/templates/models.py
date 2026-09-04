@@ -91,6 +91,7 @@ class AttackTemplate(DarcoModel):
     poc: TemplatePoC | None = None
     variables: dict[str, str] = Field(default_factory=dict)
     raw_path: str = ""
+    passive: bool = False
 
 
 class TemplateMatchResult(DarcoModel):

@@ -80,6 +80,7 @@ def execute(
     *,
     base_headers: list[NameValue] | None = None,
     client: httpx.Client | None = None,
+    proxy: str | None = None,
 ) -> tuple[httpx.Response, Response, SessionState]:
     """Low-level send. Returns (raw httpx response, darco Response model, updated session).
 
@@ -128,6 +129,7 @@ def execute(
             timeout=request.timeout,
             trust_env=False,
             cookies=cookies,
+            proxy=proxy,
         ) as c:
             resp = c.request(
                 request.method,
@@ -182,11 +184,12 @@ def send_request(
     *,
     base_headers: list[NameValue] | None = None,
     client: httpx.Client | None = None,
+    proxy: str | None = None,
 ) -> tuple[Response, SessionState]:
     """Send a Request, returning the Response and the updated SessionState."""
     try:
         _, response, session = execute(
-            request, session, base_headers=base_headers, client=client
+            request, session, base_headers=base_headers, client=client, proxy=proxy
         )
         return response, session
     except httpx.HTTPError as exc:

@@ -1,0 +1,36 @@
+id: wordpress-debug
+info:
+  name: WordPress Debug Mode / Error Logs
+  author: darco
+  severity: medium
+  description: Detects WordPress with debug mode enabled or exposed error logs revealing plugin paths and configuration.
+  tags: wordpress,debug,php,exposure,configuration
+  remediation: Set WP_DEBUG=false. Move wp-config.php outside web root. Block access to debug.log.
+
+passive: true
+matchers-condition: or
+matchers:
+  - type: word
+    words:
+      - "WP_DEBUG"
+      - "wp_debug"
+      - "WordPress database error"
+      - "wp-content/plugins"
+      - "wp-content/themes"
+      - "debug.log"
+      - "error_log"
+    part: body
+    condition: or
+  - type: word
+    words:
+      - "wordpress"
+      - "wp-json"
+    part: header
+    condition: or
+  - type: regex
+    regex:
+      - "WordPress [0-9]+\\.[0-9]+"
+      - "WP_DEBUG\\s*[,=]\\s*true"
+      - "wp-content/(plugins|themes)/[^\"']+"
+    part: body
+    condition: or

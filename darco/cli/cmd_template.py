@@ -1,5 +1,4 @@
 """Attack template commands: run / list / new."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,13 +13,8 @@ from ._output import _emit
 
 
 # ------------------------------------------------------------------ template / attack templates
-@cli.group("template", invoke_without_command=False)
-def template_group():
-    """Attack and vulnerability scanning templates (Nuclei-compatible)."""
-
-
-@template_group.command("run")
-@click.argument("target", required=False, default=None)
+@cli.command("template", context_settings={"ignore_unknown_options": True})
+@click.argument("args", nargs=-1, required=False)
 @click.option("-u", "--url", default=None, help="Target URL to scan")
 @click.option(
     "-t",
@@ -69,9 +63,9 @@ def template_group():
     help="Load external plugin files (*.py) registering custom types (repeatable)",
 )
 @click.pass_context
-def template_run_cmd(
+def template_cmd(
     ctx,
-    target,
+    args,
     url,
     templates_opt,
     tags_opt,
@@ -85,6 +79,28 @@ def template_run_cmd(
     cli_vars,
     plugin_dirs,
 ):
+    """Attack and vulnerability scanning templates (Nuclei-compatible).
+    
+    Usage:
+        darco template <url>                    # run ALL templates
+        darco template <url> sql-error-based    # run specific template
+        darco template <url> --tags exposure    # filter by tag
+        darco template list                     # list available templates
+        darco template new <id>                 # create new template
+    """
+    # Handle subcommands
+    if args and args[0] == "list":
+        return _list_templates(ctx, args[1] if len(args) > 1 else None, tags_opt, sev_opt)
+    if args and args[0] == "new":
+        if len(args) < 2:
+            raise DarcoError("usage: darco template new <template_id>")
+        return _new_template(ctx, args[1], args[2:], cli_vars)
+    
+    # Otherwise, run templates against target
+    _run_templates(ctx, args, url, templates_opt, tags_opt, sev_opt, builtin, workers, timeout, save, insecure, poc, cli_vars, plugin_dirs)
+
+
+def _run_templates(ctx, args, url, templates_opt, tags_opt, sev_opt, builtin, workers, timeout, save, insecure, poc, cli_vars, plugin_dirs):
     """Execute YAML/JSON attack templates against a target URL."""
     import asyncio
 
@@ -108,28 +124,41 @@ def template_run_cmd(
         k, _, val = v.partition("=")
         extra_vars[k.strip()] = val
 
-    target_val = url or target
-    if not target_val:
-        cfg = (ctx.obj or {}).get("config")
-        if cfg and cfg.target:
-            target_val = cfg.target
+    # Smart argument parsing:
+    # - If first arg is a URL, use it as URL
+    # - If first arg is not a URL, treat it as template name (URL from config/workspace)
+    # - Remaining args are template names
+    target_val = url
+    template_names: tuple = templates_opt
+
+    if args:
+        if args[0].startswith(("http://", "https://")):
+            target_val = args[0]
+            template_names = template_names + args[1:]
         else:
-            ws = _find_workspace(ctx, require=False)
-            if ws:
-                try:
-                    target_val = ws.load_config().target
-                except DarcoError:
-                    pass
+            template_names = template_names + args
+            if not target_val:
+                cfg = (ctx.obj or {}).get("config")
+                if cfg and cfg.target:
+                    target_val = cfg.target
+                else:
+                    ws = _find_workspace(ctx, require=False)
+                    if ws:
+                        try:
+                            target_val = ws.load_config().target
+                        except DarcoError:
+                            pass
+
     if not target_val:
         raise DarcoError(
-            "provide a target URL: 'darco template run <url>' or 'darco template run -u <url>'"
+            "provide a target URL: 'darco template <url>' or 'darco template -u <url>'"
         )
     if not target_val.startswith(("http://", "https://")):
         target_val = "http://" + target_val
 
     all_templates = []
-    if templates_opt:
-        for t_path in templates_opt:
+    if template_names:
+        for t_path in template_names:
             p = Path(t_path)
             if p.is_dir():
                 all_templates.extend(
@@ -140,15 +169,15 @@ def template_run_cmd(
             elif p.is_file():
                 all_templates.append(load_template(p))
             else:
-                builtin = None
+                builtin_path = None
                 for suffix in (".yaml", ".yml", ".json"):
                     candidate = BUILTIN_TEMPLATES_DIR / f"{t_path}{suffix}"
                     if candidate.is_file():
-                        builtin = candidate
+                        builtin_path = candidate
                         break
-                if builtin is None:
-                    raise DarcoError(f"template path not found: {t_path}")
-                all_templates.append(load_template(builtin))
+                if builtin_path is None:
+                    raise DarcoError(f"template not found: {t_path}")
+                all_templates.append(load_template(builtin_path))
     elif builtin:
         all_templates.extend(
             load_builtin_templates(tags=list(tags_opt), severities=list(sev_opt))
@@ -176,12 +205,7 @@ def template_run_cmd(
     _emit(ctx, to_json(report), md_template_report)
 
 
-@template_group.command("list")
-@click.argument("dir_path", required=False, default=None)
-@click.option("--tags", "tags_opt", multiple=True)
-@click.option("--severity", "sev_opt", multiple=True)
-@click.pass_context
-def template_list_cmd(ctx, dir_path, tags_opt, sev_opt):
+def _list_templates(ctx, dir_path, tags_opt, sev_opt):
     """List available built-in or custom attack templates."""
     from ..templates import load_builtin_templates, load_templates_from_dir
 
@@ -220,43 +244,44 @@ def template_list_cmd(ctx, dir_path, tags_opt, sev_opt):
     _emit(ctx, {"count": len(summary), "templates": summary}, render_list)
 
 
-@template_group.command("new")
-@click.argument("template_id")
-@click.option("-n", "--name", default="", help="Human-readable template name")
-@click.option(
-    "-s",
-    "--severity",
-    default="medium",
-    type=click.Choice(
-        ["info", "low", "medium", "high", "critical"], case_sensitive=False
-    ),
-)
-@click.option("-m", "--method", default="GET", help="HTTP Method (GET, POST, etc.)")
-@click.option("-p", "--path", default="{{BaseURL}}/", help="Target request path")
-@click.option("-w", "--word", "words", multiple=True, help="Words to match in response")
-@click.option(
-    "-c",
-    "--status",
-    "status_codes",
-    multiple=True,
-    type=int,
-    help="Status codes to match",
-)
-@click.option("-o", "--out", "out_file", default="", help="Output YAML file path")
-@click.pass_context
-def template_new_cmd(
-    ctx,
-    template_id,
-    name,
-    severity,
-    method,
-    path,
-    words,
-    status_codes,
-    out_file,
-):
+def _new_template(ctx, template_id, args, cli_vars):
     """Create / scaffold a new YAML attack template."""
     from ..templates import generate_template_scaffold
+    
+    # Parse additional args
+    name = ""
+    severity = "medium"
+    method = "GET"
+    path = "{{BaseURL}}/"
+    words = []
+    status_codes = []
+    out_file = ""
+    
+    i = 0
+    while i < len(args):
+        if args[i] == "-n" and i + 1 < len(args):
+            name = args[i + 1]
+            i += 2
+        elif args[i] == "-s" and i + 1 < len(args):
+            severity = args[i + 1]
+            i += 2
+        elif args[i] == "-m" and i + 1 < len(args):
+            method = args[i + 1]
+            i += 2
+        elif args[i] == "-p" and i + 1 < len(args):
+            path = args[i + 1]
+            i += 2
+        elif args[i] == "-w" and i + 1 < len(args):
+            words.append(args[i + 1])
+            i += 2
+        elif args[i] == "-c" and i + 1 < len(args):
+            status_codes.append(int(args[i + 1]))
+            i += 2
+        elif args[i] == "-o" and i + 1 < len(args):
+            out_file = args[i + 1]
+            i += 2
+        else:
+            i += 1
 
     yaml_content = generate_template_scaffold(
         template_id=template_id,
@@ -264,8 +289,8 @@ def template_new_cmd(
         severity=severity,
         method=method,
         path=path,
-        words=list(words) if words else None,
-        status_codes=list(status_codes) if status_codes else None,
+        words=words if words else None,
+        status_codes=status_codes if status_codes else None,
     )
 
     if out_file:

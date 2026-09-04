@@ -1,0 +1,42 @@
+id: laravel-debugger
+info:
+  name: Laravel Debug Mode / Debugger Exposure
+  author: darco
+  severity: critical
+  description: Detects Laravel applications with debug mode enabled, exposing sensitive configuration, database credentials, and stack traces.
+  tags: laravel,debug,php,exposure,configuration
+  remediation: Set APP_DEBUG=false in production. Never expose debug mode to the internet.
+
+passive: true
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/index.php"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "laravel"
+          - "Illuminate\\"
+          - "Whoops"
+          - "Stack trace"
+          - "vendor/laravel"
+          - "APP_DEBUG"
+          - "DB_PASSWORD"
+          - "AWS_ACCESS_KEY_ID"
+        part: body
+        condition: or
+      - type: word
+        words:
+          - "laravel_session"
+          - "XSRF-TOKEN"
+        part: header
+        condition: or
+      - type: regex
+        regex:
+          - "Laravel v[0-9]+\\.[0-9]+"
+          - "Illuminate\\\\"
+          - "vendor/laravel/framework"
+        part: body
+        condition: or

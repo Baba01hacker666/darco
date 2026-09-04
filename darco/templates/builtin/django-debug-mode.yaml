@@ -1,0 +1,43 @@
+id: django-debug-mode
+info:
+  name: Django Debug Mode Exposure
+  author: darco
+  severity: critical
+  description: Detects Django applications with DEBUG=True, exposing settings, database credentials, and full stack traces.
+  tags: django,debug,python,exposure,configuration
+  remediation: Set DEBUG=False in production. Never expose debug pages to the internet.
+
+passive: true
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/index.php"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "DEBUG = True"
+          - "django.settings"
+          - "SECRET_KEY"
+          - "DATABASES"
+          - "INSTALLED_APPS"
+          - "Request Method"
+          - "Request URL"
+          - "Exception Type"
+          - "Traceback"
+        part: body
+        condition: or
+      - type: word
+        words:
+          - "django"
+          - "csrftoken"
+        part: header
+        condition: or
+      - type: regex
+        regex:
+          - "Django [0-9]+\\.[0-9]+"
+          - "DEBUG = True"
+          - "SECRET_KEY = ['\"]"
+        part: body
+        condition: or

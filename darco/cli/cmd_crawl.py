@@ -1,9 +1,7 @@
 """Crawling commands: discover, crawl, scan, auto."""
-
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import click
 
@@ -26,37 +24,13 @@ from ._output import _emit
 @click.option("--workers", type=int, default=5)
 @click.option("--seed", "seed_files", multiple=True, type=click.Path(exists=True))
 @click.option("--no-js", is_flag=True)
-@click.option("--fuzz", is_flag=True, help="Auto-fuzz discovered endpoints and forms")
-@click.option(
-    "--sqli",
-    is_flag=True,
-    help="Auto-test discovered endpoints/forms for SQL injection",
-)
-@click.option(
-    "--xss",
-    is_flag=True,
-    help="Auto-test discovered endpoints/forms for XSS reflection",
-)
-@click.option(
-    "--upload",
-    is_flag=True,
-    help="Auto-audit discovered file upload forms/endpoints (SVG/HTML XSS)",
-)
-@click.option(
-    "--redirect",
-    is_flag=True,
-    help="Auto-audit discovered parameters for open redirects",
-)
-@click.option(
-    "--traversal",
-    is_flag=True,
-    help="Auto-audit discovered parameters for directory traversal",
-)
-@click.option(
-    "--stored-xss",
-    is_flag=True,
-    help="Auto-audit discovered forms for stored XSS execution",
-)
+@click.option("--no-fuzz", is_flag=True, help="Disable parameter mutation fuzzing")
+@click.option("--no-sqli", is_flag=True, help="Disable SQL injection testing")
+@click.option("--no-xss", is_flag=True, help="Disable XSS reflection testing")
+@click.option("--no-upload", is_flag=True, help="Disable file upload security auditing")
+@click.option("--no-redirect", is_flag=True, help="Disable open redirect auditing")
+@click.option("--no-traversal", is_flag=True, help="Disable path traversal auditing")
+@click.option("--no-stored-xss", is_flag=True, help="Disable stored XSS auditing")
 @click.option(
     "--include-state",
     is_flag=True,
@@ -69,6 +43,10 @@ from ._output import _emit
     default=True,
     help="Auto-audit login forms for common default credentials",
 )
+@click.option(
+    "--plugin", "plugins", multiple=True, help="Enable only these scan plugins"
+)
+@click.option("--skip-plugin", "skip_plugins", multiple=True, help="Skip these scan plugins")
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -81,21 +59,22 @@ def discover_cmd(
     workers,
     seed_files,
     no_js,
-    fuzz,
-    sqli,
-    xss,
-    upload,
-    redirect,
-    traversal,
-    stored_xss,
+    no_fuzz,
+    no_sqli,
+    no_xss,
+    no_upload,
+    no_redirect,
+    no_traversal,
+    no_stored_xss,
     include_state,
     default_creds,
+    plugins,
+    skip_plugins,
     insecure,
     timeout,
 ):
     """Discover site architecture, endpoints, forms, JS files, and security signals."""
-    from ..discovery.crawler import discover
-    from ..render import md_discover, md_scan
+    from ..render import md_scan
     from ..scanner import run_auto_scan
 
     url = url_opt or url_arg
@@ -111,51 +90,34 @@ def discover_cmd(
         ws = Workspace.create(url)
 
     cfg = ws.load_config()
+    proxy = (ctx.obj or {}).get("proxy")
 
-    if fuzz or sqli or xss or upload or redirect or traversal or stored_xss:
-        report = asyncio.run(
-            run_auto_scan(
-                ws,
-                url,
-                depth=depth,
-                max_urls=max_urls,
-                workers=workers,
-                parse_js=not no_js,
-                fuzz=fuzz,
-                sqli=sqli,
-                xss=xss,
-                upload=upload,
-                redirect=redirect,
-                traversal=traversal,
-                stored_xss=stored_xss,
-                default_creds=default_creds,
-                include_state_fields=include_state,
-                timeout=timeout,
-                verify=not (cfg.insecure or insecure),
-            )
-        )
-        _emit(ctx, to_json(report), md_scan)
-        return
-
-    seeds: list[str] = []
-    for f in seed_files:
-        seeds.extend(
-            line.strip() for line in Path(f).read_text().splitlines() if line.strip()
-        )
-    sitemap = asyncio.run(
-        discover(
+    # Smart default: run full scan unless explicitly disabled
+    report = asyncio.run(
+        run_auto_scan(
             ws,
             url,
             depth=depth,
             max_urls=max_urls,
             workers=workers,
-            seeds=tuple(seeds),
             parse_js=not no_js,
+            fuzz=not no_fuzz,
+            sqli=not no_sqli,
+            xss=not no_xss,
+            upload=not no_upload,
+            redirect=not no_redirect,
+            traversal=not no_traversal,
+            stored_xss=not no_stored_xss,
+            default_creds=default_creds,
+            include_state_fields=include_state,
             timeout=timeout,
             verify=not (cfg.insecure or insecure),
+            plugins=list(plugins) if plugins else None,
+            skip_plugins=list(skip_plugins) if skip_plugins else None,
+            proxy=proxy,
         )
     )
-    _emit(ctx, to_json(sitemap), md_discover)
+    _emit(ctx, to_json(report), md_scan)
 
 
 @cli.command("crawl")
@@ -166,25 +128,13 @@ def discover_cmd(
 @click.option("--workers", type=int, default=5)
 @click.option("--seed", "seed_files", multiple=True, type=click.Path(exists=True))
 @click.option("--no-js", is_flag=True)
-@click.option("--fuzz", is_flag=True, help="Auto-fuzz discovered endpoints and forms")
-@click.option(
-    "--sqli",
-    is_flag=True,
-    help="Auto-test discovered endpoints/forms for SQL injection",
-)
-@click.option(
-    "--xss",
-    is_flag=True,
-    help="Auto-test discovered endpoints/forms for XSS reflection",
-)
-@click.option(
-    "--upload",
-    is_flag=True,
-    help="Auto-audit discovered file upload forms/endpoints",
-)
-@click.option("--redirect", is_flag=True, help="Auto-audit for open redirects")
-@click.option("--traversal", is_flag=True, help="Auto-audit for path traversal")
-@click.option("--stored-xss", is_flag=True, help="Auto-audit for stored XSS")
+@click.option("--no-fuzz", is_flag=True, help="Disable parameter mutation fuzzing")
+@click.option("--no-sqli", is_flag=True, help="Disable SQL injection testing")
+@click.option("--no-xss", is_flag=True, help="Disable XSS reflection testing")
+@click.option("--no-upload", is_flag=True, help="Disable file upload security auditing")
+@click.option("--no-redirect", is_flag=True, help="Disable open redirect auditing")
+@click.option("--no-traversal", is_flag=True, help="Disable path traversal auditing")
+@click.option("--no-stored-xss", is_flag=True, help="Disable stored XSS auditing")
 @click.option(
     "--include-state",
     is_flag=True,
@@ -197,6 +147,10 @@ def discover_cmd(
     default=True,
     help="Auto-audit login forms for common default credentials",
 )
+@click.option(
+    "--plugin", "plugins", multiple=True, help="Enable only these scan plugins"
+)
+@click.option("--skip-plugin", "skip_plugins", multiple=True, help="Skip these scan plugins")
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -209,15 +163,17 @@ def crawl_cmd(
     workers,
     seed_files,
     no_js,
-    fuzz,
-    sqli,
-    xss,
-    upload,
-    redirect,
-    traversal,
-    stored_xss,
+    no_fuzz,
+    no_sqli,
+    no_xss,
+    no_upload,
+    no_redirect,
+    no_traversal,
+    no_stored_xss,
     include_state,
     default_creds,
+    plugins,
+    skip_plugins,
     insecure,
     timeout,
 ):
@@ -231,15 +187,17 @@ def crawl_cmd(
         workers=workers,
         seed_files=seed_files,
         no_js=no_js,
-        fuzz=fuzz,
-        sqli=sqli,
-        xss=xss,
-        upload=upload,
-        redirect=redirect,
-        traversal=traversal,
-        stored_xss=stored_xss,
+        no_fuzz=no_fuzz,
+        no_sqli=no_sqli,
+        no_xss=no_xss,
+        no_upload=no_upload,
+        no_redirect=no_redirect,
+        no_traversal=no_traversal,
+        no_stored_xss=no_stored_xss,
         include_state=include_state,
         default_creds=default_creds,
+        plugins=plugins,
+        skip_plugins=skip_plugins,
         insecure=insecure,
         timeout=timeout,
     )
@@ -268,6 +226,10 @@ def crawl_cmd(
     default=False,
     help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
 )
+@click.option(
+    "--plugin", "plugins", multiple=True, help="Enable only these scan plugins"
+)
+@click.option("--skip-plugin", "skip_plugins", multiple=True, help="Skip these scan plugins")
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -288,6 +250,8 @@ def scan_cmd(
     no_default_creds,
     no_js,
     include_state,
+    plugins,
+    skip_plugins,
     insecure,
     timeout,
 ):
@@ -301,15 +265,17 @@ def scan_cmd(
         workers=workers,
         seed_files=(),
         no_js=no_js,
-        fuzz=not no_fuzz,
-        sqli=not no_sqli,
-        xss=not no_xss,
-        upload=not no_upload,
-        redirect=not no_redirect,
-        traversal=not no_traversal,
-        stored_xss=not no_stored_xss,
+        no_fuzz=no_fuzz,
+        no_sqli=no_sqli,
+        no_xss=no_xss,
+        no_upload=no_upload,
+        no_redirect=no_redirect,
+        no_traversal=no_traversal,
+        no_stored_xss=no_stored_xss,
         include_state=include_state,
         default_creds=not no_default_creds,
+        plugins=plugins,
+        skip_plugins=skip_plugins,
         insecure=insecure,
         timeout=timeout,
     )
@@ -336,6 +302,10 @@ def scan_cmd(
     default=False,
     help="Also audit framework state fields (__VIEWSTATE, CSRF tokens, etc.)",
 )
+@click.option(
+    "--plugin", "plugins", multiple=True, help="Enable only these scan plugins"
+)
+@click.option("--skip-plugin", "skip_plugins", multiple=True, help="Skip these scan plugins")
 @click.option("--insecure", is_flag=True)
 @click.option("--timeout", type=float, default=10.0)
 @click.pass_context
@@ -356,6 +326,8 @@ def auto_cmd(
     no_default_creds,
     no_js,
     include_state,
+    plugins,
+    skip_plugins,
     insecure,
     timeout,
 ):
@@ -377,6 +349,8 @@ def auto_cmd(
         no_default_creds=no_default_creds,
         no_js=no_js,
         include_state=include_state,
+        plugins=plugins,
+        skip_plugins=skip_plugins,
         insecure=insecure,
         timeout=timeout,
     )

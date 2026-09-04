@@ -1,0 +1,41 @@
+id: sql-error-based
+info:
+  name: SQL Injection Error-Based Detection
+  author: darco
+  severity: high
+  description: Detects SQL injection vulnerabilities through database error messages reflected in responses.
+  tags: sqli,injection,database,error
+  remediation: Use parameterized queries / prepared statements. Never concatenate user input into SQL.
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/{{param}}'"
+      - "{{BaseURL}}/{{param}}\""
+      - "{{BaseURL}}/{{param}}`"
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "SQL syntax"
+          - "mysql_fetch"
+          - "mysql_num_rows"
+          - "mysql_error"
+          - "pg_query"
+          - "pg_exec"
+          - "ORA-"
+          - "Oracle error"
+          - "Microsoft OLE DB"
+          - "ODBC SQL Server Driver"
+          - "SQLServer JDBC Driver"
+          - "SQLite.Exception"
+          - "sqlite3.OperationalError"
+          - "Unclosed quotation mark"
+          - "quoted string not properly terminated"
+          - "you have an error in your sql syntax"
+          - "warning: mysql"
+          - "unterminated quoted string"
+          - "invalid query"
+          - "SQL command not properly ended"
+        part: body
+        condition: or

@@ -1,0 +1,45 @@
+id: env-file-exposure
+info:
+  name: Environment File Exposure (.env)
+  author: darco
+  severity: high
+  description: Detects exposed .env files containing credentials, API keys, and database passwords.
+  tags: env,exposure,credentials,config
+  remediation: Block access to .env files via web server configuration. Move outside web root.
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.env"
+      - "{{BaseURL}}/.env.bak"
+      - "{{BaseURL}}/.env.old"
+      - "{{BaseURL}}/.env.dist"
+      - "{{BaseURL}}/.env.dev"
+      - "{{BaseURL}}/.env.local"
+      - "{{BaseURL}}/.env.prod"
+      - "{{BaseURL}}/.env.production"
+      - "{{BaseURL}}/.env.example"
+      - "{{BaseURL}}/.env.backup"
+      - "{{BaseURL}}/.env copy"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        words:
+          - "DB_PASSWORD"
+          - "DB_USERNAME"
+          - "APP_KEY"
+          - "AWS_"
+          - "SECRET"
+          - "DATABASE_URL"
+        part: body
+        condition: or
+      - type: word
+        words:
+          - "<!DOCTYPE"
+          - "<html"
+        part: body
+        condition: not
+        negative: true

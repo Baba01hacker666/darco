@@ -91,6 +91,7 @@ async def discover(
     parse_js: bool = True,
     timeout: float = 10.0,
     verify: bool = True,
+    proxy: str | None = None,
 ) -> SiteMap:
     """Crawl a target and build a SiteMap. Updates workspace session and findings."""
     session = workspace.load_session()
@@ -111,7 +112,7 @@ async def discover(
     errors = 0
     max_urls_reached = False
 
-    robots, seed_urls = await _load_seeds(start, timeout, verify)
+    robots, seed_urls = await _load_seeds(start, timeout, verify, proxy=proxy)
     sitemap.robots = robots
     for r in robots:
         resolved = normalize_url(urljoin(start, r), start)
@@ -136,6 +137,7 @@ async def discover(
         trust_env=False,
         follow_redirects=True,
         cookies=_to_httpx_cookies(session),
+        proxy=proxy,
     ) as client:
         pending = 0
 
@@ -218,13 +220,13 @@ async def discover(
 
 
 async def _load_seeds(
-    start: str, timeout: float, verify: bool
+    start: str, timeout: float, verify: bool, proxy: str | None = None
 ) -> tuple[list[str], list[str]]:
     robots: list[str] = []
     seed_urls: list[str] = []
     try:
         async with httpx.AsyncClient(
-            timeout=timeout, verify=verify, trust_env=False
+            timeout=timeout, verify=verify, trust_env=False, proxy=proxy
         ) as client:
             for path, is_robots in (("/robots.txt", True), ("/sitemap.xml", False)):
                 try:
