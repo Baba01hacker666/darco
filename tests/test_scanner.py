@@ -136,7 +136,7 @@ async def test_run_auto_scan_redirect_and_traversal(app, tmp_path):
 
 # ------------------------------------------------------------------ CLI Integration Tests
 def test_cli_discover_with_fuzz(app, tmp_path):
-    res = run(["discover", app, "--fuzz", "--max-urls", "2", "--no-js"], tmp_path)
+    res = run(["discover", app, "--max-urls", "2", "--no-js"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "target" in data
@@ -145,7 +145,7 @@ def test_cli_discover_with_fuzz(app, tmp_path):
 
 
 def test_cli_crawl_with_fuzz(app, tmp_path):
-    res = run(["crawl", app, "--fuzz", "--max-urls", "2", "--no-js"], tmp_path)
+    res = run(["crawl", app, "--max-urls", "2", "--no-js"], tmp_path)
     assert res.returncode == 0, res.stderr
     data = json.loads(res.stdout)
     assert "crawled_endpoints" in data

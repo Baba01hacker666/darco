@@ -80,7 +80,7 @@ def template_cmd(
     plugin_dirs,
 ):
     """Attack and vulnerability scanning templates (Nuclei-compatible).
-    
+
     Usage:
         darco template <url>                    # run ALL templates
         darco template <url> sql-error-based    # run specific template
@@ -95,7 +95,7 @@ def template_cmd(
         if len(args) < 2:
             raise DarcoError("usage: darco template new <template_id>")
         return _new_template(ctx, args[1], args[2:], cli_vars)
-    
+
     # Otherwise, run templates against target
     _run_templates(ctx, args, url, templates_opt, tags_opt, sev_opt, builtin, workers, timeout, save, insecure, poc, cli_vars, plugin_dirs)
 
@@ -247,7 +247,7 @@ def _list_templates(ctx, dir_path, tags_opt, sev_opt):
 def _new_template(ctx, template_id, args, cli_vars):
     """Create / scaffold a new YAML attack template."""
     from ..templates import generate_template_scaffold
-    
+
     # Parse additional args
     name = ""
     severity = "medium"
@@ -256,7 +256,7 @@ def _new_template(ctx, template_id, args, cli_vars):
     words = []
     status_codes = []
     out_file = ""
-    
+
     i = 0
     while i < len(args):
         if args[i] == "-n" and i + 1 < len(args):
