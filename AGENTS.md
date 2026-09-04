@@ -21,6 +21,8 @@ approval gates unless explicitly asked.
 .venv/bin/python -m pytest -q          # run the full test suite
 .venv/bin/python -m darco --help        # run the CLI without installing
 .venv/bin/python -m compileall -q darco # syntax check
+.venv/bin/python -m ruff check darco/   # lint
+.venv/bin/python -m bandit -r darco/    # security scan
 ```
 
 - The venv is `.venv` (Python 3.12; `requires-python >= 3.11`). Use
@@ -46,7 +48,7 @@ approval gates unless explicitly asked.
 - `darco/engine.py` — HTTP execution. `execute()` is the low-level path (returns
   the raw `httpx.Response` for the proxy); `send_request()` / `send_and_record()`
   wrap it. Session capture (Set-Cookie, CSRF headers) lives here via
-  `update_session()`.
+  `update_session()`. Supports `proxy` parameter.
 - `darco/mutate.py` — mutation transforms (`Mutation` ops) applied to a request
   copy with lineage (`parent_id`, `mutations` list).
 - `darco/diff.py`, `darco/analyze.py` — response diffing (volatile-token
@@ -63,14 +65,24 @@ approval gates unless explicitly asked.
   custom-type registry (`templates/custom.py`: `binary`, `xpath`, `json`;
   plugins contribute more — e.g. `timing` provides `delay`). DSL expressions
   are evaluated by the safe parser in `templates/dsl.py`.
+  - **Passive templates**: templates with `passive: true` fire during crawl
+    (Step 4 in scanner.py) without sending extra requests — they analyze
+    responses already fetched. Great for detecting debug modes, API keys, and
+    framework fingerprints.
 - `darco/plugins/` — scan plugin registry. Built-ins register on import
-  (`xml_inject`, `timing`); external `*.py` plugins load from `--plugin-dir`
-  or `DARCO_PLUGIN_PATH`. Plugins can also register custom template types via
-  `template_matcher_types()` / `template_extractor_types()` hooks.
+  (`xml_inject`, `timing`, `evilspider_plugin`); external `*.py` plugins load
+  from `--plugin-dir` or `DARCO_PLUGIN_PATH`. Plugins can also register custom
+  template types via `template_matcher_types()` / `template_extractor_types()`
+  hooks.
+  - `evilspider_plugin.py` — wraps `evilspider` CLI as a subprocess, crawling
+    the target and importing discovered endpoints, forms, secrets, and security
+    signals as Darco findings. Gracefully disables itself if evilspider is not
+    installed. Supports proxy via `configure(proxy=...)`.
 - `darco/proxy.py` — record-only asyncio forward proxy; HTTPS is tunneled
   (CONNECT), not decrypted.
 - `darco/discovery/` — async crawler: same-origin BFS, form/JS/email extraction,
-  `robots.txt`/`sitemap.xml` seeding, endpoint inventory + signals.
+  `robots.txt`/`sitemap.xml` seeding, endpoint inventory + signals. Supports
+  `proxy` parameter.
 - `darco/cli/` — click CLI wiring, split into focused modules: `_group` (root
   group + `main()`), `_output` (`--format` JSON/md/table contract),
   `_context` (workspace resolution), `_rawio` (raw HTTP serialization),
@@ -78,6 +90,37 @@ approval gates unless explicitly asked.
   command family (`send`, `sqli`, `xss`, `auth`, `crawl`, `template`, ...).
   Every command emits JSON to stdout and logs to stderr. Expected failures
   raise `DarcoError` (from `darco/errors.py`).
+
+## Smart Defaults (Opt-Out Architecture)
+
+All scan/audit commands run the FULL audit suite by default. Use `--no-*`
+flags to disable individual audits:
+
+- `darco discover <url>` — runs crawl + ALL audits (sqli, xss, fuzz, upload, redirect, traversal, stored-xss, default-creds, passive templates)
+- `--no-sqli`, `--no-xss`, `--no-fuzz`, `--no-upload`, `--no-redirect`, `--no-traversal`, `--no-stored-xss` — disable individual audits
+- `--plugin NAME` — run only these plugins
+- `--skip-plugin NAME` — skip these plugins
+
+**Never make the user type `--sqli --xss --fuzz` to get a full scan — that's
+opt-in, user hates it.**
+
+## Proxy Support
+
+- `--proxy http://127.0.0.1:8080` on root CLI group routes all requests through
+  a proxy
+- Also respects `HTTP_PROXY` / `HTTPS_PROXY` env vars
+- Passed through to: engine (`httpx.Client`), discovery crawler, evilspider
+  plugin subprocess
+
+## Template Command
+
+- `darco template <url>` — run ALL templates against target
+- `darco template <url> sql-error-based` — run specific template
+- `darco template <url> --tags exposure` — filter by tag
+- `darco template list` — list available templates
+- `darco template new <id>` — scaffold new template
+
+**No prefix needed** — `darco template <url>` not `darco template run <url>`.
 
 ## Conventions
 
@@ -92,6 +135,12 @@ approval gates unless explicitly asked.
   (login, rate-limited OTP, CSRF echo, CAPTCHA, error leaks).
 - Don't commit workspaces (`*.darco/`), the venv, or build artifacts —
   `.gitignore` already covers them.
+- **Run linters before claiming work is done**: `.venv/bin/python -m ruff check
+  darco/` and `.venv/bin/python -m bandit -r darco/`. Fix all medium/high issues.
+  For bandit B314/B405/B501 (`xml.etree.ElementTree` on untrusted XML), this is
+  intentional in security auditing tools — add `# nosec BXXX` with a comment
+  explaining why (attacker-controlled input must be parsed to detect the
+  vulnerability).
 
 ## Testing expectations
 
@@ -101,3 +150,4 @@ Before finishing a change:
 2. Add an integration test if the change touches request flow, discovery, proxy,
    or CLI behavior.
 3. Run the full suite with `.venv/bin/python -m pytest -q` and confirm green.
+4. Run linters: `.venv/bin/python -m ruff check darco/` and `.venv/bin/python -m bandit -r darco/`.
