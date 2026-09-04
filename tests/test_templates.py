@@ -824,4 +824,3 @@ poc:
     nd = json.loads(no_poc.stdout)
     assert nd["matched_results"][0]["verified"] is False
     assert nd["matched_results"][0]["verification"] == ""
-
